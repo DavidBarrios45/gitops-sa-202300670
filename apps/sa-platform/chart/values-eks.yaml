@@ -36,7 +36,7 @@ auth-service:
   replicas: 2
   image:
     repository: ghcr.io/davidbarrios45/sa-p8-auth-service
-    tag: dev # <- el PR automático solo toca esta línea (y su digest en la descripción del PR)
+    tag: p8-v0.1.0 # <- el PR automático solo toca esta línea (y su digest en la descripción del PR)
   resources:
     requests:
       cpu: "100m"
@@ -49,7 +49,7 @@ catalogo-service:
   replicas: 2
   image:
     repository: ghcr.io/davidbarrios45/sa-p8-catalogo-service
-    tag: dev
+    tag: p8-v0.1.0
   resources:
     requests:
       cpu: "100m"
@@ -62,7 +62,7 @@ pedidos-service:
   replicas: 2
   image:
     repository: ghcr.io/davidbarrios45/sa-p8-pedidos-service
-    tag: dev
+    tag: p8-v0.1.0
   resources:
     requests:
       cpu: "100m"
@@ -75,7 +75,7 @@ pagos-service:
   replicas: 2
   image:
     repository: ghcr.io/davidbarrios45/sa-p8-pagos-service
-    tag: dev
+    tag: p8-v0.1.0
   resources:
     requests:
       cpu: "100m"
@@ -88,7 +88,7 @@ clientes-service:
   replicas: 2
   image:
     repository: ghcr.io/davidbarrios45/sa-p8-clientes-service
-    tag: dev
+    tag: p8-v0.1.0
   resources:
     requests:
       cpu: "100m"
@@ -107,7 +107,7 @@ api-gateway:
     enabled: false
   image:
     repository: ghcr.io/davidbarrios45/sa-p8-api-gateway
-    tag: dev
+    tag: p8-v0.1.0
   resources:
     requests:
       cpu: "100m"
@@ -123,7 +123,7 @@ clientesWorker:
   replicas: 1
   image:
     repository: ghcr.io/davidbarrios45/sa-p8-clientes-service
-    tag: dev
+    tag: p8-v0.1.0
   resources:
     requests:
       cpu: "50m"
@@ -140,4 +140,4 @@ cronWorker:
 cron:
   image:
     repository: ghcr.io/davidbarrios45/sa-p8-cron
-    tag: dev
+    tag: p8-v0.1.0
