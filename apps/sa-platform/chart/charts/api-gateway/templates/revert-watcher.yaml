@@ -72,21 +72,6 @@ spec:
       automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
-      initContainers:
-        - name: copy-kubectl
-          image: bitnami/kubectl:1.31
-          command: ["sh", "-c", "cp $(which kubectl) /shared/kubectl"]
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 1001
-            allowPrivilegeEscalation: false
-            capabilities: { drop: ["ALL"] }
-          resources:
-            requests: { cpu: "25m", memory: "32Mi" }
-            limits: { cpu: "100m", memory: "64Mi" }
-          volumeMounts:
-            - name: shared
-              mountPath: /shared
       containers:
         - name: watcher
           image: curlimages/curl:8.10.1
@@ -97,6 +82,9 @@ spec:
               ROLLOUT="sa-platform-api-gateway"
               NAMESPACE="$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)"
               KUBECTL=/shared/kubectl
+              echo "descargando kubectl..."
+              curl -sL -o "$KUBECTL" "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl"
+              chmod +x "$KUBECTL"
               LAST_ABORT=""
               echo "watcher iniciado: vigilando Rollout ${ROLLOUT} en ${NAMESPACE}"
               while true; do
