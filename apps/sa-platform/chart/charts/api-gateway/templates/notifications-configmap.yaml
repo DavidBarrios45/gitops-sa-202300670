@@ -10,11 +10,18 @@
 # afuera, nunca al reves. El token que autoriza esa llamada vive cifrado como
 # SealedSecret (secrets/argo-rollouts-notification-secret.sealedsecret.yaml),
 # nunca en texto plano, aunque este repositorio sea publico.
+# NOTA: este ConfigMap y su Secret (../../../../secrets/) viven en el
+# namespace "argo-rollouts" (el del controller), NO en "sa-p8" como el resto
+# del chart - verificado empiricamente contra los logs del controller
+# ("invalidated cache for resource in namespace: argo-rollouts with the
+# name: argo-rollouts-notification-secret"): en modo cluster-wide (no
+# --namespaced), Argo Rollouts busca su config de notificaciones en su
+# propio namespace, no en el del Rollout que dispara el evento.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argo-rollouts-notification-configuration
-  namespace: {{ .Values.global.namespace }}
+  namespace: argo-rollouts
 data:
   service.webhook.github-revert: |
     url: https://api.github.com/repos/DavidBarrios45/Practicas-SA-B-202300670/dispatches
