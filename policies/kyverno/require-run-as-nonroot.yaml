@@ -1,0 +1,39 @@
+# Política obligatoria #3 (enunciado 3.2): exigir ejecución sin privilegios
+# de root. Los 7 microservicios ya corren como UID 10001 desde P5-P7 (ver
+# templates/_deployment.tpl del chart: runAsNonRoot true a nivel de Pod) —
+# esta política lo convierte en un requisito verificado por el clúster, no
+# solo en una convención del chart.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-run-as-nonroot
+  annotations:
+    policies.kyverno.io/title: Require Run As Non-Root
+    policies.kyverno.io/category: Pod Security Standards (P8)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Todo Pod debe declarar runAsNonRoot=true (a nivel de Pod o de cada
+      contenedor). Un proceso comprometido corriendo como root dentro del
+      contenedor tiene mucho más margen para escalar privilegios.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-run-as-nonroot
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [sa-p8]
+      validate:
+        message: >-
+          El Pod (o cada contenedor) debe declarar
+          securityContext.runAsNonRoot: true.
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+          - spec:
+              containers:
+                - securityContext:
+                    runAsNonRoot: true

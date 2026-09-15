@@ -1,0 +1,41 @@
+apiVersion: v2
+name: sa-platform
+description: Plataforma de microservicios de la cafetería - Software Avanzado Práctica 5
+type: application
+
+# 'version' es la versión del CHART (SemVer obligatorio para que helm lint no
+# emita warnings en Helm 4). 'appVersion' es la versión de la aplicación.
+# Estas dos suben en cada release: demostrar upgrade + rollback usa este versionado.
+version: 0.2.0
+appVersion: "1.0.0"
+
+# Base de datos y broker declarados como DEPENDENCIAS (requisito del enunciado).
+# Se resuelven con:  helm dependency update ./charts/sa-platform
+# Usamos charts que despliegan las imágenes OFICIALES de Docker Hub (postgres,
+# rabbitmq) en lugar de Bitnami, cuyo catálogo gratuito fue deprecado en 2025.
+dependencies:
+  - name: postgres
+    version: "1.6.8"
+    repository: "https://groundhog2k.github.io/helm-charts/"
+    condition: postgres.enabled
+
+  - name: rabbitmq
+    version: "2.3.7"
+    repository: "https://groundhog2k.github.io/helm-charts/"
+    condition: rabbitmq.enabled
+
+  # --- Microservicios propios (subcharts LOCALES en charts/) ---
+  # Van SIN 'repository': ya existen como carpeta, Helm no los descarga.
+  # Se agregan conforme construimos cada servicio.
+  - name: catalogo-service
+    version: "0.1.0"
+  - name: auth-service
+    version: "0.1.0"
+  - name: pedidos-service
+    version: "0.1.0"
+  - name: pagos-service
+    version: "0.1.0"
+  - name: clientes-service
+    version: "0.1.0"
+  - name: api-gateway
+    version: "0.1.0"

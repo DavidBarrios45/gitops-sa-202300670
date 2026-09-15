@@ -1,0 +1,41 @@
+{{- if .Values.rbac.enabled }}
+# ============================================================================
+# RBAC de mínimo privilegio (bloque G). Un ServiceAccount DEDICADO por workload,
+# con un Role VACÍO (cero permisos de API) y su RoleBinding. Los workloads no
+# usan la API de Kubernetes, así que el mínimo privilegio literal es sin reglas
+# y sin montar el token. Prohibido el ServiceAccount 'default'.
+# ============================================================================
+{{- range $w := list "api-gateway" "auth-service" "catalogo-service" "pedidos-service" "pagos-service" "clientes-service" "clientes-worker" "cron-worker" "cron-registrar" "cron-resumen" "db-init" }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $.Release.Name }}-{{ $w }}
+  labels:
+    {{- include "sa-platform.labels" $ | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $.Release.Name }}-{{ $w }}
+  labels:
+    {{- include "sa-platform.labels" $ | nindent 4 }}
+rules: []   # sin reglas = cero permisos = mínimo privilegio
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $.Release.Name }}-{{ $w }}
+  labels:
+    {{- include "sa-platform.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $.Release.Name }}-{{ $w }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $.Release.Name }}-{{ $w }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- end }}

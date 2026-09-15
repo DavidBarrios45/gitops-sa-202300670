@@ -1,0 +1,81 @@
+{{- if .Values.clientesWorker.enabled }}
+# ============================================================================
+# clientes-worker: consumidor asíncrono. Misma imagen que clientes-service,
+# pero corre 'python -m app.worker' en vez de uvicorn. Sin Service (no expone
+# HTTP). Se puede escalar a 0 para demostrar la acumulación en la cola (bloque D).
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-clientes-worker
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.clientesWorker.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: clientes-worker
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ .Values.global.config | toYaml | sha256sum | quote }}
+      labels:
+        app.kubernetes.io/name: clientes-worker
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-clientes-worker
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: clientes-worker
+          image: "{{ .Values.clientesWorker.image.repository }}:{{ .Values.clientesWorker.image.tag | default "dev" }}"
+          imagePullPolicy: {{ .Values.clientesWorker.image.pullPolicy | default "IfNotPresent" }}
+          command: ["python", "-m", "app.worker"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          env:
+            - name: TMPDIR
+              value: /tmp
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sa-platform.secretName" . }}
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sa-platform.secretName" . }}
+                  key: POSTGRES_PASSWORD
+            # El worker escribe los puntos en la base de clientes.
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "sa-platform.postgresHost" . }}:5432/clientes_db"
+          # RABBITMQ_* (host/puerto del ConfigMap, user/pass del Secret) llegan por envFrom.
+          envFrom:
+            - configMapRef:
+                name: {{ include "sa-platform.configMapName" . }}
+            - secretRef:
+                name: {{ include "sa-platform.secretName" . }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

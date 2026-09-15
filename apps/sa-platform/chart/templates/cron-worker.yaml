@@ -1,0 +1,115 @@
+{{- if .Values.cronWorker.enabled }}
+# cron-worker: consume 'cron.resumen' y guarda en cron_db. Mismo patrón que clientes-worker.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-cron-worker
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.cronWorker.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cron-worker
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cron-worker
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-cron-worker
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # cron.worker/registrar/resumen crean sus tablas al arrancar sin
+      # reintentos propios (a diferencia de los servicios Node con Prisma).
+      # No alcanza con "esperar" al Job db-init (hook post-install): con
+      # --wait, Helm no dispara los hooks post-install hasta que los
+      # Deployments ya esten Ready, e interbloquearia (confirmado
+      # reproduciendo el despliegue en un kind local). Este initContainer
+      # CREA cron_db si no existe, sin depender del hook.
+      initContainers:
+        - name: wait-for-db
+          image: postgres:16-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: HOME
+              value: /tmp
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sa-platform.secretName" . }}
+                  key: POSTGRES_USER
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sa-platform.secretName" . }}
+                  key: POSTGRES_PASSWORD
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              HOST={{ include "sa-platform.postgresHost" . }}
+              until pg_isready -h "$HOST" -U "$POSTGRES_USER"; do
+                echo "esperando a que postgres acepte conexiones..."; sleep 2;
+              done
+              if psql -h "$HOST" -U "$POSTGRES_USER" -d postgres -tAc \
+                   "SELECT 1 FROM pg_database WHERE datname='cron_db'" | grep -q 1; then
+                echo "cron_db ya existe"
+              else
+                echo "creando cron_db"
+                psql -h "$HOST" -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE \"cron_db\""
+              fi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: cron-worker
+          image: "{{ .Values.cron.image.repository }}:{{ .Values.cron.image.tag | default "dev" }}"
+          imagePullPolicy: {{ .Values.cron.image.pullPolicy | default "IfNotPresent" }}
+          command: ["python", "-m", "cron.worker"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sa-platform.secretName" . }}
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sa-platform.secretName" . }}
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "sa-platform.postgresHost" . }}:5432/cron_db"
+          envFrom:
+            - configMapRef:
+                name: {{ include "sa-platform.configMapName" . }}
+            - secretRef:
+                name: {{ include "sa-platform.secretName" . }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

@@ -1,0 +1,18 @@
+# --- Secretos y llaves: NUNCA se versionan en este repo ---
+# El único mecanismo válido de secretos aquí es un SealedSecret (ciphertext,
+# ver secrets/*.sealedsecret.yaml) — cualquier archivo con credenciales en
+# texto plano o llaves privadas se excluye explícitamente.
+*.key
+*.pem
+values-secret*.yaml
+values*-local.yaml
+
+# --- Certificados de sealed-secrets obtenidos localmente (kubeseal --fetch-cert) ---
+# Son específicos de cada cluster efímero de desarrollo (kind local); no
+# aportan nada versionado y cambian en cada recreación del cluster.
+kind-cert*.pem
+*-cert.pem
+
+# --- SO / editor ---
+.DS_Store
+Thumbs.db

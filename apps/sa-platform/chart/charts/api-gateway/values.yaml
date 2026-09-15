@@ -1,0 +1,83 @@
+# Valores del subchart api-gateway.
+# El Rollout/Deployment lo genera el molde compartido (ver rollout.yaml y
+# deployment.yaml — uno u otro se activa según rollout.enabled).
+image:
+  repository: sa/api-gateway
+  tag: dev
+  pullPolicy: IfNotPresent
+
+replicas: 2
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# El gateway NO tiene base de datos ni Prisma. Desde P8 expone GET /health
+# propio (antes usaba probe TCP): lo golpean el AnalysisTemplate del canary
+# y las pruebas de humo.
+features:
+  database: ""
+  prismaMigrate: false
+  healthCheck: http
+  healthPath: /health
+
+# Modo de fallo inducido (P8): "" (normal) | "error" | "latency".
+# Se sobreescribe únicamente en values-defectuoso.yaml para la demo del
+# informe de incidente — nunca en values-eks.yaml.
+faultMode: ""
+
+# Ingress: única puerta de entrada. host vacío => responde en cualquier host
+# (p. ej. http://localhost/). path / => todo el tráfico va al gateway.
+# Con rollout.enabled=true, este es el Ingress "estable"
+# (trafficRouting.nginx.stableIngress en rollout.yaml) — Argo Rollouts crea
+# y gestiona el Ingress canario automáticamente a partir de este mismo.
+ingress:
+  enabled: true
+  className: nginx
+  host: ""
+  path: /
+  annotations: {}
+
+# HPA (heredado de P5-P7): SOLO se usa si rollout.enabled=false. Durante un
+# canary con trafficRouting, el peso de tráfico no depende del número de
+# réplicas — el HPA pelearía con Rollouts por spec.replicas y arruinaría el
+# análisis (ver P8/PLAN.md hallazgo #3), por eso el molde exige AMBAS
+# condiciones antes de crear el HPA.
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 2
+  targetCPUUtilizationPercentage: 40
+
+# Entrega progresiva (P8, Argo Rollouts). Ver charts/api-gateway/templates/
+# rollout.yaml y analysistemplate.yaml.
+rollout:
+  enabled: true
+  # 4 pasos de promoción (excede el mínimo de 3 que pide el enunciado),
+  # cada uno seguido de un análisis (smoke + integración + carga vía k6).
+  steps:
+    - weight: 20
+    - weight: 50
+    - weight: 80
+    - weight: 100
+  analysis:
+    # Umbrales del AnalysisTemplate (ver analysistemplate.yaml), justificados
+    # en P8/docs/informe-incidente.md e informe técnico:
+    #   - errorRateThreshold: 1% es el presupuesto de error de un SLO de
+    #     99% mensual.
+    #   - p95Threshold: 500ms es el punto en que un usuario percibe
+    #     lentitud en un gateway que solo proxea (sin lógica propia).
+    errorRateThreshold: "0.01"
+    p95ThresholdMs: "500"
+    vus: 5
+    durationSeconds: 20
+
+env: {}
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "250m"
+    memory: "256Mi"

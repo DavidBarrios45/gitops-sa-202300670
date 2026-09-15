@@ -1,0 +1,44 @@
+# ============================================================================
+# values.example.yaml — YA NO SE USA para credenciales desde P8.
+#
+# Antes (P5-P7) este archivo era la plantilla de `values-secret.yaml` (un
+# archivo de VALUES de Helm con secretos en texto plano, NO versionado).
+# Desde P8 esa vía queda cerrada por completo: el enunciado prohíbe
+# explícitamente cualquier secreto en texto plano en el repositorio de
+# manifiestos, y este chart ya no acepta credenciales por `values` en
+# absoluto (ver templates/secret.yaml eliminado y sa-platform.secretName en
+# templates/_helpers.tpl).
+#
+# El único mecanismo válido ahora es un SealedSecret ya versionado en la
+# raíz de este mismo repo (secrets/sa-platform-secret.sealedsecret.yaml,
+# ciphertext — solo el controller de Sealed Secrets dentro del clúster
+# puede descifrarlo). Procedimiento para generarlo o rotarlo:
+#
+#   1. Escribe (NUNCA commitees) un Secret en texto plano equivalente a:
+#
+#        apiVersion: v1
+#        kind: Secret
+#        metadata:
+#          name: sa-platform-secret
+#          namespace: sa-p8
+#        type: Opaque
+#        stringData:
+#          POSTGRES_USER: postgres
+#          POSTGRES_PASSWORD: <contraseña real>
+#          JWT_SECRET: <secreto real>
+#          AES_KEY: <64 chars hex — node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
+#          HMAC_KEY: <64 chars hex, mismo comando>
+#          INTERNAL_KEY: <secreto real>
+#          RABBITMQ_USER: sa_user
+#          RABBITMQ_PASSWORD: <contraseña real>
+#          ERLANG_COOKIE: <cadena larga y aleatoria, minimo 20 caracteres>
+#
+#   2. Séllalo contra el certificado público del controller del clúster
+#      destino (kind local o EKS — cada uno tiene su propia llave):
+#
+#        kubeseal --cert <cert-del-controller>.pem --format yaml \
+#          < secret-plano-temporal.yaml > secrets/sa-platform-secret.sealedsecret.yaml
+#
+#   3. Borra el Secret en texto plano temporal. El .sealedsecret.yaml SÍ se
+#      commitea — es ciphertext, inútil fuera del clúster que lo selló.
+# ============================================================================

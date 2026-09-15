@@ -1,0 +1,23 @@
+# ============================================================================
+# values-defectuoso.yaml — perfil del FALLO INDUCIDO (enunciado 3.2:
+# "publicar deliberadamente una versión defectuosa y demostrar con evidencia
+# que las validaciones del canary la detectan y el sistema revierte
+# automáticamente").
+#
+# Uso manual (documentación/reproducción del incidente):
+#   helm upgrade sa-platform . -n sa-p8 \
+#     -f values.yaml -f values-eks.yaml -f values-defectuoso.yaml
+#
+# En producción real este archivo NUNCA se combina con values-eks.yaml salvo
+# durante la demostración deliberada del informe de incidente — no forma
+# parte del flujo normal del PR automático (que solo toca image.tag/digest).
+#
+# FAULT_MODE=error: /health del api-gateway responde 500 a partir del
+# primer paso del canary (excepto a las probes de kubelet, ver P8/services/
+# api-gateway/src/app.ts — así el Pod sí queda Ready y el canario sí recibe
+# el tráfico sintético del AnalysisTemplate, que es quien debe detectarlo).
+# Alternativa: FAULT_MODE=latency, que en vez de fallar agrega ~2s de
+# demora — dispara el umbral de p95<500ms en lugar del de tasa de error.
+# ============================================================================
+api-gateway:
+  faultMode: "error"

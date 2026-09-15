@@ -1,0 +1,88 @@
+# Política obligatoria adicional (enunciado 3.2, "seguridad de la cadena de
+# suministro"): verificar la firma de Cosign ANTES de admitir el Pod.
+# Solo aplica a imágenes de GHCR (imageReferences) — las imágenes locales de
+# desarrollo (sa/*:dev, usadas en el kind local) NO llevan firma real de
+# Cosign (no viven en un registro), así que quedarían fuera del alcance
+# aquí a propósito, sin bloquear el ciclo de desarrollo local. En EKS,
+# TODAS las imágenes de la plataforma vienen de ghcr.io/davidbarrios45/*.
+#
+# Par de claves (no keyless) como mecanismo PRIMARIO: keyless depende de
+# Rekor/Fulcio por red; en un clúster que se paga por hora, un fallo
+# intermitente de esos servicios sería más costoso de depurar que verificar
+# offline contra esta llave pública (ver P8/PLAN.md hallazgo #6).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signature
+  annotations:
+    policies.kyverno.io/title: Verify Image Signature (Cosign, par de claves)
+    policies.kyverno.io/category: Software Supply Chain (P8)
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/description: >-
+      Ninguna imagen de la plataforma (ghcr.io/davidbarrios45/sa-p8-*) puede
+      desplegarse sin una firma de Cosign válida, verificada offline contra
+      la llave pública del proyecto.
+spec:
+  validationFailureAction: Enforce
+  background: false
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-cosign-signature-keypair
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [sa-p8]
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/davidbarrios45/sa-p8-*"
+          attestors:
+            - entries:
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEQZZ2HQKOlWhjOlB7m3rbV2J8Ucdq
+                      nb7i9j4hC34nYgOhlVMwr4j8qc5aYOnjCzBfpVZjDfdRFxg152xcKa/PpA==
+                      -----END PUBLIC KEY-----
+---
+# Política complementaria (bonus, NO reemplaza la de par de claves):
+# verificación KEYLESS en modo Audit (nunca bloquea, solo reporta). Sirve
+# como capa adicional de trazabilidad — deja constancia (PolicyReport) de si
+# la imagen también tendría una firma keyless válida vía Sigstore/Fulcio/
+# Rekor, sin depender de la disponibilidad de esos servicios para admitir
+# el Pod (ver P8/PLAN.md hallazgo #6: keyless como primario sería un riesgo
+# de disponibilidad en un clúster que se paga por hora).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signature-keyless-audit
+  annotations:
+    policies.kyverno.io/title: Verify Image Signature (Cosign, keyless, Audit)
+    policies.kyverno.io/category: Software Supply Chain (P8)
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/description: >-
+      Reporta (sin bloquear) si la imagen también cuenta con una firma
+      keyless válida de Sigstore, como capa adicional de trazabilidad sobre
+      la verificación primaria por par de claves.
+spec:
+  validationFailureAction: Audit
+  background: false
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-cosign-signature-keyless
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [sa-p8]
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/davidbarrios45/sa-p8-*"
+          mutateDigest: false
+          attestors:
+            - entries:
+                - keyless:
+                    issuer: "https://token.actions.githubusercontent.com"
+                    subject: "https://github.com/DavidBarrios45/Practicas-SA-B-202300670/.github/workflows/*"
+                    rekor:
+                      url: "https://rekor.sigstore.dev"

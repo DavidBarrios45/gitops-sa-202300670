@@ -1,0 +1,223 @@
+{{- if .Values.cron.enabled }}
+# ============================================================================
+# Cronjob 1: cada 2 min inserta fecha/hora (GMT-6) + carné en cron_db.
+# ============================================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-cron-registrar
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cron.registrar.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.cron.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .Values.cron.failedJobsHistoryLimit | default 3 }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.cron.backoffLimit | default 2 }}
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: cron-registrar
+            app.kubernetes.io/instance: {{ .Release.Name }}
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ .Release.Name }}-cron-registrar
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: wait-for-db
+              image: postgres:16-alpine
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "sa-platform.secretName" . }}
+                      key: POSTGRES_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "sa-platform.secretName" . }}
+                      key: POSTGRES_PASSWORD
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  HOST={{ include "sa-platform.postgresHost" . }}
+                  until pg_isready -h "$HOST" -U "$POSTGRES_USER"; do
+                    echo "esperando a que postgres acepte conexiones..."; sleep 2;
+                  done
+                  if psql -h "$HOST" -U "$POSTGRES_USER" -d postgres -tAc \
+                       "SELECT 1 FROM pg_database WHERE datname='cron_db'" | grep -q 1; then
+                    echo "cron_db ya existe"
+                  else
+                    echo "creando cron_db"
+                    psql -h "$HOST" -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE \"cron_db\""
+                  fi
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          containers:
+            - name: cron-registrar
+              image: "{{ .Values.cron.image.repository }}:{{ .Values.cron.image.tag | default "dev" }}"
+              imagePullPolicy: {{ .Values.cron.image.pullPolicy | default "IfNotPresent" }}
+              command: ["python", "-m", "cron.registrar"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: "25m"
+                  memory: "32Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "128Mi"
+              env:
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "sa-platform.secretName" . }}
+                      key: POSTGRES_USER
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "sa-platform.secretName" . }}
+                      key: POSTGRES_PASSWORD
+                - name: DATABASE_URL
+                  value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "sa-platform.postgresHost" . }}:5432/cron_db"
+              envFrom:
+                - configMapRef:
+                    name: {{ include "sa-platform.configMapName" . }}
+                - secretRef:
+                    name: {{ include "sa-platform.secretName" . }}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+---
+# ============================================================================
+# Cronjob 2: cada 10 min resume ejecuciones/hora y publica en 'cron.resumen'.
+# ============================================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-cron-resumen
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cron.resumen.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.cron.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .Values.cron.failedJobsHistoryLimit | default 3 }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.cron.backoffLimit | default 2 }}
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: cron-resumen
+            app.kubernetes.io/instance: {{ .Release.Name }}
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ .Release.Name }}-cron-resumen
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: wait-for-db
+              image: postgres:16-alpine
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "sa-platform.secretName" . }}
+                      key: POSTGRES_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "sa-platform.secretName" . }}
+                      key: POSTGRES_PASSWORD
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  HOST={{ include "sa-platform.postgresHost" . }}
+                  until pg_isready -h "$HOST" -U "$POSTGRES_USER"; do
+                    echo "esperando a que postgres acepte conexiones..."; sleep 2;
+                  done
+                  if psql -h "$HOST" -U "$POSTGRES_USER" -d postgres -tAc \
+                       "SELECT 1 FROM pg_database WHERE datname='cron_db'" | grep -q 1; then
+                    echo "cron_db ya existe"
+                  else
+                    echo "creando cron_db"
+                    psql -h "$HOST" -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE \"cron_db\""
+                  fi
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          containers:
+            - name: cron-resumen
+              image: "{{ .Values.cron.image.repository }}:{{ .Values.cron.image.tag | default "dev" }}"
+              imagePullPolicy: {{ .Values.cron.image.pullPolicy | default "IfNotPresent" }}
+              command: ["python", "-m", "cron.resumen"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: "25m"
+                  memory: "32Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "128Mi"
+              env:
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "sa-platform.secretName" . }}
+                      key: POSTGRES_USER
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "sa-platform.secretName" . }}
+                      key: POSTGRES_PASSWORD
+                - name: DATABASE_URL
+                  value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "sa-platform.postgresHost" . }}:5432/cron_db"
+              envFrom:
+                - configMapRef:
+                    name: {{ include "sa-platform.configMapName" . }}
+                - secretRef:
+                    name: {{ include "sa-platform.secretName" . }}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+{{- end }}

@@ -1,0 +1,27 @@
+# Valores del subchart clientes-service. El Deployment lo genera el molde compartido.
+image:
+  repository: sa/clientes-service
+  tag: dev
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+service:
+  type: ClusterIP
+  port: 3005
+
+features:
+  database: clientes_db
+  prismaMigrate: false
+  healthCheck: http
+  healthPath: /health
+
+env: {}
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "250m"
+    memory: "256Mi"

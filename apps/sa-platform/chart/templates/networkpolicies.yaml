@@ -1,0 +1,162 @@
+{{- if .Values.networkPolicies.enabled }}
+# ============================================================================
+# NetworkPolicies - aislamiento de red (bloque E).
+# Estrategia: default-deny de INGRESS + permisos explícitos por flujo autorizado.
+# El egress queda abierto (así el DNS a kube-dns nunca se rompe).
+# En cuanto una policy selecciona un pod, ese pod solo recibe lo permitido.
+# ============================================================================
+
+# 1) DEFAULT-DENY: ningún pod del namespace recibe tráfico, salvo lo que
+#    permitan las policies siguientes.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  podSelector: {}          # selecciona TODOS los pods del namespace
+  policyTypes:
+    - Ingress
+---
+# 2) El Ingress Controller (otro namespace) puede alcanzar al gateway.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-from-ingress-nginx
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# 3) El gateway puede alcanzar a los 5 microservicios.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-services-from-gateway
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [auth-service, catalogo-service, pedidos-service, pagos-service, clientes-service]
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api-gateway
+              app.kubernetes.io/instance: {{ .Release.Name }}
+---
+# 4) pedidos puede alcanzar a catalogo y pagos (orquestación interna síncrona).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-catalogo-pagos-from-pedidos
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [catalogo-service, pagos-service]
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: pedidos-service
+              app.kubernetes.io/instance: {{ .Release.Name }}
+---
+# 5) Postgres solo lo alcanzan los componentes de la plataforma (servicios,
+#    worker, Job de init, futuros cronjobs). Un pod ajeno queda bloqueado.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-from-platform
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# 6) RabbitMQ solo lo alcanzan el productor (pedidos) y el consumidor (worker).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rabbitmq-from-producers-consumers
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [pedidos-service, clientes-worker, cron-resumen, cron-worker]
+      ports:
+        - protocol: TCP
+          port: 5672
+---
+# 7) P8: el Job del AnalysisTemplate del canary (ver
+#    charts/api-gateway/templates/analysistemplate.yaml) golpea el Service
+#    canario del api-gateway durante cada paso de la promoción — necesita
+#    permiso explícito porque, igual que cualquier otro pod del namespace,
+#    parte bloqueado por el default-deny (regla 1).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-from-canary-analysis
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api-gateway
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              sa.io/role: analysis
+      ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}

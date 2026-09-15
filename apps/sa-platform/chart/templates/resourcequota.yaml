@@ -1,0 +1,18 @@
+{{- if .Values.namespaceGovernance.enabled }}
+# ResourceQuota (bloque F): tope total de consumo del namespace sa-p5.
+# Con la quota activa, todo contenedor debe declarar requests y limits; los que
+# no lo hagan reciben los valores por defecto del LimitRange.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ .Release.Name }}-quota
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 4Gi
+    limits.cpu: "8"
+    limits.memory: 8Gi
+    pods: "30"
+{{- end }}

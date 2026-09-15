@@ -1,0 +1,137 @@
+# ============================================================================
+# values.yaml BASE del chart sa-platform.
+#
+# P8: este chart YA NO genera ningún Secret ni acepta credenciales por
+# values (a diferencia de P5-P7). El único Secret real, "sa-platform-secret"
+# (JWT_SECRET, AES_KEY, HMAC_KEY, INTERNAL_KEY, POSTGRES_USER/PASSWORD,
+# RABBITMQ_USER/PASSWORD, ERLANG_COOKIE), lo produce el controller de Sealed
+# Secrets al desencriptar secrets/sa-platform-secret.sealedsecret.yaml (raíz
+# de este repo GitOps) — ese archivo SÍ se versiona: es ciphertext, solo el
+# controller dentro del clúster puede descifrarlo. "No se admite ningún
+# secreto en texto plano en el repositorio de manifiestos" (enunciado 3.2).
+# ============================================================================
+
+# ---- Global: heredado por TODOS los subcharts ----
+global:
+  namespace: sa-p8
+  env: dev
+  imagePullPolicy: IfNotPresent
+
+  # Configuración NO sensible compartida (va al ConfigMap).
+  # Vive bajo 'global' para que cada subchart pueda calcular el checksum/config
+  # y reiniciarse automáticamente cuando cambie (bloque B).
+  config:
+    logLevel: "info"
+    jwtTtl: "3600"
+    quetzalesPorPunto: "20"
+    carne: "202300670"
+
+# El Secret real "sa-platform-secret" (nombre fijo: ver
+# sa-platform.secretName en templates/_helpers.tpl, "<release>-secret") lo
+# aporta el SealedSecret de la raíz del repo — no hay valores que declarar
+# aquí.
+
+# ---- Worker consumidor asíncrono (clientes-worker) ----
+# Reusa la imagen de clientes-service; corre app.worker en vez de uvicorn.
+clientesWorker:
+  enabled: true
+  replicas: 1
+  image:
+    repository: sa/clientes-service
+    tag: dev
+    pullPolicy: IfNotPresent
+
+# ============================================================================
+# DEPENDENCIA: PostgreSQL (groundhog2k/postgres -> imagen oficial postgres)
+# StatefulSet + PVC + headless service (bloque C).
+# Las 5 bases lógicas las crea un Job de init en la Fase 3c.
+# ============================================================================
+postgres:
+  enabled: true
+  image:
+    tag: "16-alpine"
+  storage:
+    requestedSize: 1Gi
+  settings:
+    # P8: la contraseña del superusuario ya NO se declara en texto plano
+    # aquí — se lee de la clave POSTGRES_PASSWORD dentro del Secret que
+    # produce el SealedSecret de la raíz del repo (mismo Secret que usan
+    # los microservicios, ver sa-platform.secretName).
+    existingSecret: sa-platform-secret
+    superuserPassword:
+      secretKey: POSTGRES_PASSWORD
+  # Obligatorio desde P8: la política Kyverno require-resource-limits exige
+  # límites en TODO pod del namespace, incluidas las dependencias vendored.
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+# ============================================================================
+# DEPENDENCIA: RabbitMQ (groundhog2k/rabbitmq -> imagen oficial rabbitmq)
+# Broker para el flujo asíncrono (bloque D) y el Cronjob 2.
+# ============================================================================
+rabbitmq:
+  enabled: true
+  image:
+    tag: "3-management-alpine"
+  authentication:
+    # P8: usuario, password y erlang cookie vienen del mismo Secret
+    # sellado que el resto de la plataforma (sa-platform-secret) — cero
+    # texto plano en este repo.
+    existingSecret: sa-platform-secret
+    user:
+      secretKey: RABBITMQ_USER
+    password:
+      secretKey: RABBITMQ_PASSWORD
+    erlangCookie:
+      secretKey: ERLANG_COOKIE
+  # Obligatorio desde P8 (ver nota igual en postgres, arriba).
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+# ---- NetworkPolicies (aislamiento de red, bloque E) ----
+networkPolicies:
+  enabled: true
+
+# ---- Gobierno del namespace (bloque F) ----
+# P8: DESACTIVADO. El namespace/ResourceQuota/LimitRange/RBAC de plataforma
+# ahora los crea Terraform (P8/terraform/), no el chart — ver P8/PLAN.md,
+# sección "Alcance de Terraform". Mantenerlo aquí como false documenta
+# explícitamente por qué el chart ya no trae estos recursos.
+namespaceGovernance:
+  enabled: false
+
+podDisruptionBudgets:
+  enabled: true          # crea un PDB por servicio (maxUnavailable: 1)
+
+# ---- CronJobs encadenados (bloque H) ----
+cron:
+  enabled: true
+  image:
+    repository: sa/cron
+    tag: dev
+    pullPolicy: IfNotPresent
+  backoffLimit: 2
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  registrar:
+    schedule: "*/2 * * * *"      # cada 2 minutos
+  resumen:
+    schedule: "*/10 * * * *"     # cada 10 minutos
+
+cronWorker:
+  enabled: true
+  replicas: 1
+
+# ---- RBAC de mínimo privilegio (bloque G) ----
+rbac:
+  enabled: true

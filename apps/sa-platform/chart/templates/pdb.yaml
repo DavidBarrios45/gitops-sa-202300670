@@ -1,0 +1,20 @@
+{{- if .Values.podDisruptionBudgets.enabled }}
+# PodDisruptionBudget por servicio (bloque F). maxUnavailable: 1 permite el
+# desalojo/drenaje de nodo sin trabar operaciones con servicios de 1 réplica.
+# Se generan con 'range' sobre la lista de servicios.
+{{- range $svc := list "api-gateway" "auth-service" "catalogo-service" "pedidos-service" "pagos-service" "clientes-service" "clientes-worker" }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $.Release.Name }}-{{ $svc }}
+  labels:
+    {{- include "sa-platform.labels" $ | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $svc }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+{{- end }}
+{{- end }}

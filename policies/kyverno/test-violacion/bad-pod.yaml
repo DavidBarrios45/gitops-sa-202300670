@@ -1,0 +1,15 @@
+# Pod deliberadamente NO conforme, usado como evidencia de "despliegue
+# rechazado por política" (tabla de enlaces, sección 4.1 del enunciado).
+# Viola las 3 políticas obligatorias a la vez:
+#   1. disallow-latest-tag        -> usa "nginx:latest"
+#   2. require-resource-limits    -> no declara resources.limits
+#   3. require-run-as-nonroot     -> no declara runAsNonRoot (corre como root)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod-violacion-politicas
+  namespace: sa-p8
+spec:
+  containers:
+    - name: bad-container
+      image: nginx:latest
