@@ -85,8 +85,7 @@ clientes-service:
 # maneja el conteo de réplicas); solo se sobreescriben imagen y recursos.
 api-gateway:
   image:
-    tag: canary-fault-1
-  faultMode: "error"
+    tag: canary-ok-1
   resources:
     requests:
       cpu: "50m"
