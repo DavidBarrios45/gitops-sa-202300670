@@ -110,6 +110,7 @@ spec:
                   key: github-token
           securityContext:
             runAsNonRoot: true
+            runAsUser: 100 # curl_user - el UID de la imagen no es numerico, k8s no puede verificarlo sin declararlo
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
