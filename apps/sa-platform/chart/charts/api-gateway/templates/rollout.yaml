@@ -15,10 +15,6 @@ metadata:
   name: {{ include "sa-platform.fullname" . }}
   labels:
     {{- include "sa-platform.labels" . | nindent 4 }}
-  annotations:
-    # Suscribe este Rollout al trigger definido en notifications-configmap.yaml:
-    # cuando quede Degraded por un abort, llama al webhook "github-revert".
-    notifications.argoproj.io/subscribe.on-rollout-degraded-github.github-revert: ""
 spec:
   replicas: {{ .Values.replicas | default 2 }}
   revisionHistoryLimit: 3

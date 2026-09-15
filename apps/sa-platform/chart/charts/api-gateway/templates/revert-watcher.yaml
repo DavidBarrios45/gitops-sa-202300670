@@ -1,0 +1,137 @@
+{{- if .Values.rollout.enabled }}
+# ============================================================================
+# Watcher de reversion automatica (P8, hallazgo #4): un Pod propio, liviano,
+# que cada ~20s pregunta al API de Kubernetes si el Rollout del api-gateway
+# quedo Degraded/abortado, y si es asi, llama UNA vez a GitHub
+# (repository_dispatch) para disparar p8-auto-revert.yml.
+#
+# Por que esto y no "Argo Rollouts Notifications": se probo primero el
+# mecanismo nativo (Notifications) y el controller instalado (v1.10.0)
+# rechazaba el trigger personalizado con un error de "configuration in
+# namespace" no resuelto en la ventana de tiempo disponible - ver
+# P8/docs/evidencias/. Esta alternativa logra lo mismo (el cluster avisa
+# hacia afuera, ningun workflow lee el cluster) con una pieza mucho mas
+# simple de depurar: un solo Pod, RBAC de SOLO LECTURA sobre un unico
+# recurso (rollouts/sa-platform-api-gateway), sin escritura al cluster.
+#
+# De-duplicacion: guarda en memoria el ultimo "abortedAt" ya notificado -
+# solo dispara el webhook cuando cambia (un abort nuevo), no en cada loop.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "sa-platform.fullname" . }}-revert-watcher
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "sa-platform.fullname" . }}-revert-watcher
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["rollouts"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "sa-platform.fullname" . }}-revert-watcher
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "sa-platform.fullname" . }}-revert-watcher
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sa-platform.fullname" . }}-revert-watcher
+    namespace: {{ .Values.global.namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sa-platform.fullname" . }}-revert-watcher
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sa-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: revert-watcher
+  template:
+    metadata:
+      labels:
+        {{- include "sa-platform.labels" . | nindent 8 }}
+        app.kubernetes.io/component: revert-watcher
+    spec:
+      serviceAccountName: {{ include "sa-platform.fullname" . }}-revert-watcher
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+      initContainers:
+        - name: copy-kubectl
+          image: bitnami/kubectl:1.31
+          command: ["sh", "-c", "cp $(which kubectl) /shared/kubectl"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "25m", memory: "32Mi" }
+            limits: { cpu: "100m", memory: "64Mi" }
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+      containers:
+        - name: watcher
+          image: curlimages/curl:8.10.1
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              ROLLOUT="sa-platform-api-gateway"
+              NAMESPACE="$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)"
+              KUBECTL=/shared/kubectl
+              LAST_ABORT=""
+              echo "watcher iniciado: vigilando Rollout ${ROLLOUT} en ${NAMESPACE}"
+              while true; do
+                ABORT=$("$KUBECTL" get rollout "$ROLLOUT" -n "$NAMESPACE" -o jsonpath='{.status.abort}' 2>/dev/null || echo "")
+                ABORTED_AT=$("$KUBECTL" get rollout "$ROLLOUT" -n "$NAMESPACE" -o jsonpath='{.status.abortedAt}' 2>/dev/null || echo "")
+                if [ "$ABORT" = "true" ] && [ -n "$ABORTED_AT" ] && [ "$ABORTED_AT" != "$LAST_ABORT" ]; then
+                  echo "Rollout Degraded detectado (abortedAt=${ABORTED_AT}) - avisando a GitHub"
+                  curl -sf -X POST "https://api.github.com/repos/DavidBarrios45/Practicas-SA-B-202300670/dispatches" \
+                    -H "Authorization: token ${GITHUB_TOKEN}" \
+                    -H "Accept: application/vnd.github+json" \
+                    -H "X-GitHub-Api-Version: 2022-11-28" \
+                    -d "{\"event_type\":\"p8-rollout-degraded\",\"client_payload\":{\"rollout\":\"${ROLLOUT}\",\"namespace\":\"${NAMESPACE}\",\"abortedAt\":\"${ABORTED_AT}\"}}" \
+                    && echo "aviso enviado OK" || echo "fallo el aviso, se reintentara en el proximo ciclo"
+                  LAST_ABORT="$ABORTED_AT"
+                fi
+                sleep 20
+              done
+          env:
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: p8-revert-watcher-secret
+                  key: github-token
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "25m", memory: "32Mi" }
+            limits: { cpu: "100m", memory: "64Mi" }
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+      volumes:
+        - name: shared
+          emptyDir: {}
+{{- end }}
