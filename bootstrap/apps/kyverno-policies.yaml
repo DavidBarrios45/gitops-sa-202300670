@@ -1,0 +1,26 @@
+# Las 5 ClusterPolicy de policies/kyverno/ (namespaces: [sa-p8], ver
+# P8/PLAN.md hallazgo #5). test-violacion/bad-pod.yaml NO se sincroniza:
+# el source "directory" de ArgoCD no es recursivo por defecto, asi que ese
+# subdirectorio (usado solo para "kyverno apply -r" en CI/local) queda fuera.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno-policies
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
+    targetRevision: main
+    path: policies/kyverno
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

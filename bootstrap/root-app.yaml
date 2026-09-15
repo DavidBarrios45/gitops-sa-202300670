@@ -1,0 +1,28 @@
+# App-of-apps (bootstrap de dia-0, ver P8/PLAN.md Fase 3). Este es el UNICO
+# recurso que se aplica a mano contra el cluster ya bootstrapeado
+# (add-ons: sealed-secrets, argo-rollouts, kyverno, argocd, ingress-nginx,
+# instalados imperativamente antes de este paso). A partir de aqui, todo lo
+# que gestiona la plataforma (sa-platform, las ClusterPolicy de Kyverno, el
+# SealedSecret) vive en este repo y ArgoCD es el unico que lo aplica.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
+    targetRevision: main
+    path: bootstrap/apps
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

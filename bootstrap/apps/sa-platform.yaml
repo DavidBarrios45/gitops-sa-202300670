@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-platform
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
+    targetRevision: main
+    path: apps/sa-platform/chart
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-dev.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sa-p8
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
