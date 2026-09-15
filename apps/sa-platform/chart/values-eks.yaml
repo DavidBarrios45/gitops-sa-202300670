@@ -1,0 +1,143 @@
+# ============================================================================
+# values-eks.yaml — overrides para el clúster EKS real (sa-p8, us-east-1).
+#
+# ÚNICO archivo que el pipeline de CI (P8/.github/workflows/p8-ci.yml, job
+# "pr-to-gitops") modifica automáticamente, y solo los campos "image.tag" de
+# cada servicio (vía yq) — nunca esta cabecera, nunca los templates. Esa es
+# la restricción del enunciado: "el pipeline únicamente actualiza la versión
+# de la imagen mediante un Pull Request automático" (ver P8/PLAN.md,
+# "Dónde vive cada cosa").
+#
+# El PR agrega además, como comentario junto a cada tag tocado, el digest
+# completo (sha256) de la imagen firmada — evidencia de la Fase 6 sin
+# necesidad de un campo "image.digest" en el chart: la política Kyverno
+# "verify-image-signature" ya fija el digest en el Pod admitido en tiempo de
+# admisión (mutateDigest, ver policies/kyverno/verify-image-signature.yaml),
+# así que no hace falta duplicar ese dato en los values.
+#
+# Filosofía: réplicas/recursos reales para 2 nodos c7i-flex.large (ver
+# P8/PLAN.md, "Presupuesto de recursos en EKS"), imágenes de GHCR (nunca
+# ':latest' — siempre el tag semántico "p8-vX.Y.Z" que publicó el pipeline),
+# almacenamiento en la StorageClass real de EBS. Solo se listan las claves
+# que DIFIEREN de values.yaml; el resto se hereda.
+# ============================================================================
+
+global:
+  env: production
+  config:
+    logLevel: info
+
+postgres:
+  storage:
+    className: ebs-gp3
+
+# ---- Microservicios (subcharts locales; la clave = nombre del subchart) ----
+auth-service:
+  replicas: 2
+  image:
+    repository: ghcr.io/davidbarrios45/sa-p8-auth-service
+    tag: dev # <- el PR automático solo toca esta línea (y su digest en la descripción del PR)
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+catalogo-service:
+  replicas: 2
+  image:
+    repository: ghcr.io/davidbarrios45/sa-p8-catalogo-service
+    tag: dev
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+pedidos-service:
+  replicas: 2
+  image:
+    repository: ghcr.io/davidbarrios45/sa-p8-pedidos-service
+    tag: dev
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+pagos-service:
+  replicas: 2
+  image:
+    repository: ghcr.io/davidbarrios45/sa-p8-pagos-service
+    tag: dev
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+clientes-service:
+  replicas: 2
+  image:
+    repository: ghcr.io/davidbarrios45/sa-p8-clientes-service
+    tag: dev
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+# api-gateway: réplicas fijas (2-3), el HPA queda desactivado durante el
+# canario (ver P8/PLAN.md hallazgo #3 y Fase 2 punto 3): trafficRouting ya
+# controla el peso de tráfico, un HPA compitiendo por spec.replicas produciría
+# flapping que arruina el análisis de Argo Rollouts.
+api-gateway:
+  replicas: 2
+  autoscaling:
+    enabled: false
+  image:
+    repository: ghcr.io/davidbarrios45/sa-p8-api-gateway
+    tag: dev
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+# clientesWorker reusa la imagen de clientes-service pero declara su propio
+# 'image.tag' en el template (clientes-worker.yaml); el PR automático toca
+# este tag junto con el de clientes-service, al mismo valor siempre.
+clientesWorker:
+  replicas: 1
+  image:
+    repository: ghcr.io/davidbarrios45/sa-p8-clientes-service
+    tag: dev
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+
+cronWorker:
+  replicas: 1
+
+# cron.image se reusa tanto en el Deployment "cron-worker" como en los dos
+# CronJob (cronjobs.yaml) — un solo tag para las tres cargas.
+cron:
+  image:
+    repository: ghcr.io/davidbarrios45/sa-p8-cron
+    tag: dev
