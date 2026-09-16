@@ -1,0 +1,60 @@
+# ============================================================================
+# values-ci.yaml — SOLO para el kind efimero de p8-gitops-verify.yml
+# (.github/workflows/p8-gitops-verify.yml), nunca para kind local ni EKS.
+#
+# El runner de GitHub Actions (2 vCPU / 7GB) es, tal como ya anticipaba
+# P8/PLAN.md ("el punto mas fragil de esa parte del diseno"), insuficiente
+# para correr la plataforma completa (7 servicios + Postgres + RabbitMQ) A LA
+# VEZ que ArgoCD (7 pods) + Kyverno (4) + Argo Rollouts + Sealed Secrets +
+# ingress-nginx — confirmado con un "0/1 nodes available: Insufficient cpu"
+# real en RabbitMQ durante la primera corrida (ver P8/docs/evidencias/).
+#
+# Este perfil: (a) desactiva cron/cronWorker/clientesWorker - no participan
+# en lo que este workflow verifica (canario del api-gateway, rechazo de
+# Kyverno, sync de ArgoCD), y (b) recorta aun mas las CPU requests (nunca
+# los limits, para no ahogar el arranque real) de lo que ya hace
+# values-dev.yaml.
+# ============================================================================
+
+clientesWorker:
+  enabled: false
+cronWorker:
+  enabled: false
+cron:
+  enabled: false
+
+postgres:
+  resources:
+    requests:
+      cpu: "30m"
+      memory: "64Mi"
+
+rabbitmq:
+  resources:
+    requests:
+      cpu: "30m"
+      memory: "64Mi"
+
+auth-service:
+  resources:
+    requests: { cpu: "15m", memory: "48Mi" }
+
+catalogo-service:
+  resources:
+    requests: { cpu: "15m", memory: "48Mi" }
+
+pedidos-service:
+  resources:
+    requests: { cpu: "15m", memory: "48Mi" }
+
+pagos-service:
+  resources:
+    requests: { cpu: "15m", memory: "48Mi" }
+
+clientes-service:
+  resources:
+    requests: { cpu: "15m", memory: "48Mi" }
+
+api-gateway:
+  resources:
+    requests: { cpu: "15m", memory: "48Mi" }
