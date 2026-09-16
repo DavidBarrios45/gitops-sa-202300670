@@ -58,3 +58,11 @@ clientes-service:
 api-gateway:
   resources:
     requests: { cpu: "15m", memory: "48Mi" }
+  rollout:
+    # Analisis de k6 mas corto: en este runner compartido (2 vCPU) la carga
+    # por defecto (5 VUs / 20s) tarda mucho mas que en local por el CPU
+    # recortado arriba. 2 VUs / 5s sigue ejerciendo el mismo checklist
+    # (smoke+integracion+carga) sin alargar cada uno de los 4 pasos.
+    analysis:
+      vus: 2
+      durationSeconds: 5
