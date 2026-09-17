@@ -36,13 +36,15 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/davidbarrios45/sa-p8-*"
-          # Los paquetes de GHCR son privados: Kyverno necesita esta
-          # credencial explicita para poder leer el manifiesto/firma
-          # (la deteccion automatica via imagePullSecrets del Pod no
-          # aplico para el admission controller en pruebas reales).
-          imageRegistryCredentials:
-            secrets:
-              - "sa-p8/ghcr-pull-secret"
+          # Los paquetes de GHCR son privados: el admission controller de
+          # Kyverno se configura con --imagePullSecrets=ghcr-pull-secret
+          # (helm upgrade --set existingImagePullSecrets, ver values del
+          # bootstrap) para autenticar contra GHCR. Se probo primero con
+          # imageRegistryCredentials.secrets ("namespace/name") aqui mismo,
+          # por-politica, pero anulaba silenciosamente la credencial global
+          # del controller sin poder resolver el secret cross-namespace
+          # (confirmado con logs: seguia fallando con UNAUTHORIZED incluso
+          # con RBAC correcto). El flag global del controller si funciona.
           attestors:
             - entries:
                 - keys:
@@ -86,9 +88,6 @@ spec:
         - imageReferences:
             - "ghcr.io/davidbarrios45/sa-p8-*"
           mutateDigest: false
-          imageRegistryCredentials:
-            secrets:
-              - "sa-p8/ghcr-pull-secret"
           attestors:
             - entries:
                 - keyless:
