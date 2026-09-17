@@ -28,10 +28,16 @@ spec:
       kind: Deployment
       jqPathExpressions:
         - '.spec.template.spec.containers[].image'
+        # Los servicios Node con Prisma (auth/catalogo/pedidos) usan un
+        # initContainer "prisma-migrate" con la MISMA imagen del
+        # contenedor principal (ver _deployment.tpl) - tambien recibe el
+        # digest mutado por Kyverno.
+        - '.spec.template.spec.initContainers[].image'
     - group: batch
       kind: CronJob
       jqPathExpressions:
         - '.spec.jobTemplate.spec.template.spec.containers[].image'
+        - '.spec.jobTemplate.spec.template.spec.initContainers[].image'
   syncPolicy:
     automated:
       prune: true
