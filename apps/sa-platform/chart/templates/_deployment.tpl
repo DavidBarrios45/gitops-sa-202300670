@@ -28,6 +28,8 @@ metadata:
 spec:
   serviceAccountName: {{ include "sa-platform.fullname" . }}
   automountServiceAccountToken: false
+  imagePullSecrets:
+    - name: ghcr-pull-secret
   securityContext:
     runAsNonRoot: true
     runAsUser: 10001

@@ -25,6 +25,8 @@ spec:
           restartPolicy: OnFailure
           serviceAccountName: {{ .Release.Name }}-cron-registrar
           automountServiceAccountToken: false
+          imagePullSecrets:
+            - name: ghcr-pull-secret
           securityContext:
             runAsNonRoot: true
             runAsUser: 10001
@@ -136,6 +138,8 @@ spec:
           restartPolicy: OnFailure
           serviceAccountName: {{ .Release.Name }}-cron-resumen
           automountServiceAccountToken: false
+          imagePullSecrets:
+            - name: ghcr-pull-secret
           securityContext:
             runAsNonRoot: true
             runAsUser: 10001

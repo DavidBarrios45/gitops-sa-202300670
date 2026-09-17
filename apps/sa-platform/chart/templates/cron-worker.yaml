@@ -21,6 +21,8 @@ spec:
     spec:
       serviceAccountName: {{ .Release.Name }}-cron-worker
       automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
