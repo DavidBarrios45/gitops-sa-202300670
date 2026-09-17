@@ -36,6 +36,13 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/davidbarrios45/sa-p8-*"
+          # Los paquetes de GHCR son privados: Kyverno necesita esta
+          # credencial explicita para poder leer el manifiesto/firma
+          # (la deteccion automatica via imagePullSecrets del Pod no
+          # aplico para el admission controller en pruebas reales).
+          imageRegistryCredentials:
+            secrets:
+              - "sa-p8/ghcr-pull-secret"
           attestors:
             - entries:
                 - keys:
@@ -79,6 +86,9 @@ spec:
         - imageReferences:
             - "ghcr.io/davidbarrios45/sa-p8-*"
           mutateDigest: false
+          imageRegistryCredentials:
+            secrets:
+              - "sa-p8/ghcr-pull-secret"
           attestors:
             - entries:
                 - keyless:
