@@ -16,6 +16,22 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: sa-p8
+  # verify-image-signature (Kyverno) mutateDigest:true fija el digest
+  # completo en cada Pod admitido (imagen:tag@sha256:...) - Git solo
+  # declara imagen:tag (el PR automatico nunca escribe el digest en el
+  # chart, ver values-eks.yaml). Sin esto ArgoCD veria drift permanente:
+  # selfHeal revertiria al valor de Git, Kyverno lo volveria a mutar en
+  # el proximo Pod admitido, en bucle. Se le pide a ArgoCD ignorar
+  # unicamente el campo image del contenedor al diffear.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+    - group: batch
+      kind: CronJob
+      jqPathExpressions:
+        - '.spec.jobTemplate.spec.template.spec.containers[].image'
   syncPolicy:
     automated:
       prune: true
