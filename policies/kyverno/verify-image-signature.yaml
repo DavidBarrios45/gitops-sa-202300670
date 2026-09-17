@@ -36,15 +36,15 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/davidbarrios45/sa-p8-*"
-          # Los paquetes de GHCR son privados: el admission controller de
-          # Kyverno se configura con --imagePullSecrets=ghcr-pull-secret
-          # (helm upgrade --set existingImagePullSecrets, ver values del
-          # bootstrap) para autenticar contra GHCR. Se probo primero con
-          # imageRegistryCredentials.secrets ("namespace/name") aqui mismo,
-          # por-politica, pero anulaba silenciosamente la credencial global
-          # del controller sin poder resolver el secret cross-namespace
-          # (confirmado con logs: seguia fallando con UNAUTHORIZED incluso
-          # con RBAC correcto). El flag global del controller si funciona.
+          # mutateDigest: false — si Kyverno reescribe el Pod admitido para
+          # fijar "imagen:tag@sha256:..." pero Git solo declara "imagen:tag"
+          # (sin digest), ArgoCD ve drift permanente en cada sync (selfHeal
+          # revierte al tag sin digest, Kyverno lo vuelve a mutar en el
+          # siguiente Pod) — confirmado en pruebas reales contra EKS: todos
+          # los Deployment quedaban OutOfSync sin parar. El digest de cada
+          # imagen firmada ya queda documentado aparte (cuerpo del PR al
+          # repo GitOps), no hace falta mutarlo en el recurso admitido.
+          mutateDigest: false
           attestors:
             - entries:
                 - keys:
