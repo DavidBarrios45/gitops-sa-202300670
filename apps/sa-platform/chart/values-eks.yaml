@@ -105,7 +105,6 @@ api-gateway:
   replicas: 2
   autoscaling:
     enabled: false
-  faultMode: "error"
   image:
     repository: ghcr.io/davidbarrios45/sa-p8-api-gateway
     tag: p8-v0.1.0
