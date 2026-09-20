@@ -1,0 +1,39 @@
+# Idéntica a bootstrap/apps/sa-platform.yaml (EKS) salvo un único cambio:
+# agrega values-kind.yaml al final de valueFiles (StorageClass "standard" en
+# vez de "ebs-gp3" — ver apps/sa-platform/chart/values-kind.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-platform
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
+    targetRevision: main
+    path: apps/sa-platform/chart
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-eks.yaml
+        - values-kind.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sa-p8
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+        - '.spec.template.spec.initContainers[].image'
+    - group: batch
+      kind: CronJob
+      jqPathExpressions:
+        - '.spec.jobTemplate.spec.template.spec.containers[].image'
+        - '.spec.jobTemplate.spec.template.spec.initContainers[].image'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

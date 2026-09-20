@@ -1,0 +1,28 @@
+# App-of-apps para el clúster kind LOCAL de desarrollo/depuración (P9). Es un
+# árbol paralelo a bootstrap/root-app.yaml (el de EKS, sin cambios): mismo
+# nombre de Application ("root-app") porque nunca coexisten en el mismo
+# clúster, pero apunta a bootstrap/apps-kind/ en vez de bootstrap/apps/, cuya
+# única diferencia es que sa-platform-kind.yaml agrega values-kind.yaml
+# (StorageClass "standard" en vez de "ebs-gp3" — ver values-kind.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
+    targetRevision: main
+    path: bootstrap/apps-kind
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

@@ -1,0 +1,7 @@
+# P9: values SOLO para el clúster kind local de desarrollo/depuración (nunca
+# se usa contra el EKS real, que sigue usando values-eks.yaml sin cambios).
+# Reemplaza la StorageClass ebs-gp3 (exclusiva de EKS/EBS CSI, no existe en
+# kind) por "standard" (rancher.io/local-path, la que trae kind por defecto).
+postgres:
+  storage:
+    className: standard
