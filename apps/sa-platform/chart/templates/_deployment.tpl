@@ -43,12 +43,20 @@ spec:
   # canarios del mismo servicio (3 pods con 2 workers) y una regla dura dejaría
   # al canario en Pending; tampoco bloquea el reprogramado tras perder un nodo
   # (con "required" y 2 workers, la réplica desalojada no encontraría dónde caer).
+  # matchLabelKeys acota la repulsión a los pods de la MISMA revisión: sin ello,
+  # durante el canary las réplicas viejas repelen a las nuevas hacia el otro
+  # nodo y, al retirarse las viejas, las nuevas quedan juntas (medido en la
+  # prueba de la Fase 4). Cada clave se ignora si el pod no la lleva
+  # (rollouts-pod-template-hash: Rollouts; pod-template-hash: Deployment).
   affinity:
     podAntiAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
           podAffinityTerm:
             topologyKey: kubernetes.io/hostname
+            matchLabelKeys:
+              - rollouts-pod-template-hash
+              - pod-template-hash
             labelSelector:
               matchLabels:
                 {{- include "sa-platform.selectorLabels" . | nindent 16 }}
