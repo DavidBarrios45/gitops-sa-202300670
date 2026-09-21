@@ -36,6 +36,23 @@ spec:
     fsGroup: 10001
     seccompProfile:
       type: RuntimeDefault
+  {{- if and .Values.podAntiAffinity .Values.podAntiAffinity.enabled }}
+  # P9 (continuidad operativa): repartir las réplicas entre nodos para que la
+  # pérdida de UN nodo no se lleve todas. Es "preferred" y no "required" a
+  # propósito: durante un canary de Argo Rollouts conviven pods estables y
+  # canarios del mismo servicio (3 pods con 2 workers) y una regla dura dejaría
+  # al canario en Pending; tampoco bloquea el reprogramado tras perder un nodo
+  # (con "required" y 2 workers, la réplica desalojada no encontraría dónde caer).
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                {{- include "sa-platform.selectorLabels" . | nindent 16 }}
+  {{- end }}
   {{- if or .Values.features.prismaMigrate .Values.features.database }}
   initContainers:
     {{- if .Values.features.prismaMigrate }}

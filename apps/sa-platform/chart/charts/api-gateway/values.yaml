@@ -8,6 +8,12 @@ image:
 
 replicas: 2
 
+# P9: anti-afinidad entre nodos (ver sa-platform.podTemplate). Solo el
+# api-gateway: es el punto de entrada del tráfico y el servicio que la prueba
+# de drenaje de nodo (Fase 4) mantiene respondiendo.
+podAntiAffinity:
+  enabled: true
+
 service:
   type: ClusterIP
   port: 8080
