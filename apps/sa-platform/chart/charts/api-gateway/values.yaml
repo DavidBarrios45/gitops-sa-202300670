@@ -14,6 +14,10 @@ replicas: 2
 podAntiAffinity:
   enabled: true
 
+# P9: segundos que el pod sigue sirviendo tras recibir la orden de cierre
+# (preStop). Evita errores de conexión durante un drenaje de nodo.
+preStopSleepSeconds: 10
+
 service:
   type: ClusterIP
   port: 8080

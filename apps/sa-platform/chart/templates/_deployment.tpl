@@ -195,6 +195,18 @@ spec:
             name: {{ include "sa-platform.secretName" . }}
       resources:
         {{- toYaml .Values.resources | nindent 8 }}
+      {{- if .Values.preStopSleepSeconds }}
+      # P9: al desalojar el pod (drenaje de nodo), el endpoint tarda unos
+      # segundos en salir del balanceador; sin esta pausa ingress-nginx sigue
+      # enviando peticiones a un contenedor que ya se cerró (connection refused,
+      # medido en la prueba de la Fase 4). El sleep mantiene el pod sirviendo
+      # mientras se propaga la baja del endpoint. Debe ser menor que
+      # terminationGracePeriodSeconds (30 s por defecto).
+      lifecycle:
+        preStop:
+          exec:
+            command: ["sleep", {{ .Values.preStopSleepSeconds | quote }}]
+      {{- end }}
       {{- if eq (.Values.features.healthCheck | default "http") "http" }}
       # Probes HTTP contra el endpoint de salud
       startupProbe:
