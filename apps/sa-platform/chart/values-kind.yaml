@@ -1,7 +1,12 @@
 # P9: values SOLO para el clúster kind local de desarrollo/depuración (nunca
 # se usa contra el EKS real, que sigue usando values-eks.yaml sin cambios).
 # Reemplaza la StorageClass ebs-gp3 (exclusiva de EKS/EBS CSI, no existe en
-# kind) por "standard" (rancher.io/local-path, la que trae kind por defecto).
+# kind) por "standard-local": la StorageClass "standard" que trae kind crea PVs
+# de tipo hostPath, que el file-system backup de Velero excluye en silencio
+# (comprobado en la Fase 3: el PVC de Postgres no aparecía en ningún
+# PodVolumeBackup). "standard-local" (creada por Terraform, ver
+# terraform/kind/velero.tf) usa el mismo provisioner pero con
+# defaultVolumeType=local, y esos PVs sí son respaldables.
 postgres:
   storage:
-    className: standard
+    className: standard-local

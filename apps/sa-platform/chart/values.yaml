@@ -52,6 +52,11 @@ postgres:
     tag: "16-alpine"
   storage:
     requestedSize: 1Gi
+  # P9: opt-in explícito al respaldo de Velero (file-system backup) SOLO para el
+  # volumen de datos de Postgres. Sin esto Velero respaldaría también todos los
+  # emptyDir de la plataforma (tmp, run, ...), que son efímeros y solo agregan ruido.
+  podAnnotations:
+    backup.velero.io/backup-volumes: postgres-data
   settings:
     # P8: la contraseña del superusuario ya NO se declara en texto plano
     # aquí — se lee de la clave POSTGRES_PASSWORD dentro del Secret que
