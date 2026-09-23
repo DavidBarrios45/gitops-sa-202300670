@@ -26,11 +26,9 @@ global:
   env: production
   config:
     logLevel: info
-
 postgres:
   storage:
     className: ebs-gp3
-
 # ---- Microservicios (subcharts locales; la clave = nombre del subchart) ----
 auth-service:
   replicas: 2
@@ -44,7 +42,6 @@ auth-service:
     limits:
       cpu: "500m"
       memory: "512Mi"
-
 catalogo-service:
   replicas: 2
   image:
@@ -57,7 +54,6 @@ catalogo-service:
     limits:
       cpu: "500m"
       memory: "512Mi"
-
 pedidos-service:
   replicas: 2
   image:
@@ -70,7 +66,6 @@ pedidos-service:
     limits:
       cpu: "500m"
       memory: "512Mi"
-
 pagos-service:
   replicas: 2
   image:
@@ -83,7 +78,6 @@ pagos-service:
     limits:
       cpu: "500m"
       memory: "512Mi"
-
 clientes-service:
   replicas: 2
   image:
@@ -96,7 +90,6 @@ clientes-service:
     limits:
       cpu: "500m"
       memory: "512Mi"
-
 # api-gateway: réplicas fijas (2-3), el HPA queda desactivado durante el
 # canario (ver P8/PLAN.md hallazgo #3 y Fase 2 punto 3): trafficRouting ya
 # controla el peso de tráfico, un HPA compitiendo por spec.replicas produciría
@@ -115,7 +108,6 @@ api-gateway:
     limits:
       cpu: "500m"
       memory: "512Mi"
-
 # clientesWorker reusa la imagen de clientes-service pero declara su propio
 # 'image.tag' en el template (clientes-worker.yaml); el PR automático toca
 # este tag junto con el de clientes-service, al mismo valor siempre.
@@ -131,10 +123,8 @@ clientesWorker:
     limits:
       cpu: "250m"
       memory: "256Mi"
-
 cronWorker:
   replicas: 1
-
 # cron.image se reusa tanto en el Deployment "cron-worker" como en los dos
 # CronJob (cronjobs.yaml) — un solo tag para las tres cargas.
 cron:
