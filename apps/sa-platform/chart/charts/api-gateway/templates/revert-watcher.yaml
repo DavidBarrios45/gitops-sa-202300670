@@ -60,12 +60,24 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "sa-platform.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: revert-watcher
+      # HALLAZGO (P9, Fase 4/7): antes usaba "sa-platform.selectorLabels" tal
+      # cual, que pone app.kubernetes.io/name=api-gateway (nombre del
+      # subchart) — eso hacía que este Pod cayera bajo el MISMO
+      # PodDisruptionBudget que el api-gateway real (pdb.yaml selecciona por
+      # ese label). Con maxUnavailable=1 y 2 Pods "api-gateway" contando para
+      # el mismo PDB, un drenaje de nodo podía bloquearse esperando a que el
+      # revert-watcher se reprograme antes de dejar ir al api-gateway real.
+      # Un app.kubernetes.io/name propio saca a este Pod de ese PDB.
+      app.kubernetes.io/name: revert-watcher
+      app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
       labels:
-        {{- include "sa-platform.labels" . | nindent 8 }}
+        helm.sh/chart: {{ include "sa-platform.chart" . }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/part-of: sa-platform
+        app.kubernetes.io/name: revert-watcher
+        app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: revert-watcher
     spec:
       serviceAccountName: {{ include "sa-platform.fullname" . }}-revert-watcher
