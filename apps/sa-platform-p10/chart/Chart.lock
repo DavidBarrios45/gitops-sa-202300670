@@ -1,0 +1,27 @@
+dependencies:
+- name: postgres
+  repository: https://groundhog2k.github.io/helm-charts/
+  version: 1.6.8
+- name: rabbitmq
+  repository: https://groundhog2k.github.io/helm-charts/
+  version: 2.3.7
+- name: catalogo-service
+  repository: ""
+  version: 0.1.0
+- name: auth-service
+  repository: ""
+  version: 0.1.0
+- name: pedidos-service
+  repository: ""
+  version: 0.1.0
+- name: pagos-service
+  repository: ""
+  version: 0.1.0
+- name: clientes-service
+  repository: ""
+  version: 0.1.0
+- name: api-gateway
+  repository: ""
+  version: 0.1.0
+digest: sha256:9e513448db9dd35d47f1985502aca59914fa010706e19c20171d9ea64b63e3ed
+generated: "2026-09-06T12:00:21.1521425-06:00"

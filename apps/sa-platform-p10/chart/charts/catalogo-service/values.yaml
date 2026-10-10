@@ -1,0 +1,35 @@
+# ============================================================================
+# Valores del subchart catalogo-service.
+# El Deployment lo genera el molde compartido "sa-platform.deployment"
+# (definido en el chart padre). Este values solo aporta los parámetros.
+# ============================================================================
+
+image:
+  repository: sa/catalogo-service
+  tag: dev
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+service:
+  type: ClusterIP
+  port: 3002                 # puerto del contenedor y del Service (env PORT)
+
+# Diferencias de ESTE servicio frente a los demás (las lee el molde):
+features:
+  database: catalogo_db      # tiene base de datos lógica -> monta DATABASE_URL
+  prismaMigrate: true        # es Node+Prisma -> agrega el initContainer de migración
+  healthCheck: http          # expone /health -> probes httpGet
+  healthPath: /health
+
+# Variables extra literales propias (catálogo no necesita; todo viene de
+# ConfigMap/Secret vía envFrom). Se deja vacío.
+env: {}
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "250m"
+    memory: "256Mi"

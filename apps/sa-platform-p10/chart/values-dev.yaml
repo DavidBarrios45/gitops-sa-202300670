@@ -1,0 +1,111 @@
+# ============================================================================
+# values-dev.yaml — overrides para el ambiente de DESARROLLO.
+#
+# Se combina con values.yaml (base) y values-secret.yaml (credenciales) al
+# instalar/actualizar, en ese orden (el último -f gana sobre los anteriores):
+#
+#   helm upgrade --install sa-platform ./charts/sa-platform -n sa-p5 --create-namespace \
+#     -f ./charts/sa-platform/values.yaml \
+#     -f ./charts/sa-platform/values-dev.yaml \
+#     -f ./charts/sa-platform/values-secret.yaml
+#
+# Filosofía: pocas réplicas y límites de recursos bajos (para no saturar una
+# máquina local), tag de imagen mutable ':dev' (se reconstruye seguido) y
+# logging verboso ('debug') para facilitar el diagnóstico durante desarrollo.
+# Solo se listan las claves que DIFIEREN de values.yaml; el resto se hereda.
+# ============================================================================
+
+global:
+  env: dev
+  config:
+    logLevel: debug
+
+# ---- Microservicios (subcharts locales; la clave = nombre del subchart) ----
+auth-service:
+  replicas: 1
+  image:
+    tag: dev
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+
+catalogo-service:
+  replicas: 1
+  image:
+    tag: dev
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+
+pedidos-service:
+  replicas: 1
+  image:
+    tag: dev
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+
+pagos-service:
+  replicas: 1
+  image:
+    tag: dev
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+
+clientes-service:
+  replicas: 1
+  image:
+    tag: dev
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+
+# api-gateway: 'replicas' NO aplica mientras autoscaling.enabled=true (el HPA
+# maneja el conteo de réplicas); solo se sobreescriben imagen y recursos.
+api-gateway:
+  image:
+    tag: dev
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "250m"
+      memory: "256Mi"
+
+# ---- Worker asíncrono y cron (mismo criterio: liviano en dev) ----
+# clientesWorker reusa la imagen de clientes-service pero declara su propio
+# 'image.tag' en el template (clientes-worker.yaml); hay que sobreescribirlo
+# aparte o queda desincronizado del tag real de clientes-service.
+clientesWorker:
+  replicas: 1
+  image:
+    tag: dev
+
+cronWorker:
+  replicas: 1
+
+cron:
+  image:
+    tag: dev

@@ -1,0 +1,94 @@
+{{- if .Values.rollout.enabled }}
+# ============================================================================
+# AnalysisTemplate: la puerta de calidad que corre en CADA paso del canary
+# (ver rollout.yaml). Provider "job": Argo Rollouts crea un Job de k6 en cada
+# paso; si el Job termina con código != 0 (cualquier check o umbral falla,
+# ver files/canary-analysis.js), el AnalysisRun queda "Failed", el Rollout
+# queda "Degraded" y aborta automáticamente (peso -> 0, todo el tráfico
+# vuelve al stable).
+# ============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ include "sa-platform.fullname" . }}-canary-gate
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  args:
+    - name: canary-service
+  metrics:
+    - name: canary-gate-k6
+      # Un solo intento por paso: si falla, Rollouts ya decide abortar sin
+      # reintentar (el propio script ya corre smoke+integracion+carga).
+      count: 1
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            template:
+              metadata:
+                labels:
+                  # Habilita la NetworkPolicy que permite este trafico
+                  # hacia el api-gateway (ver templates/networkpolicies.yaml
+                  # del chart padre).
+                  sa.io/role: analysis
+              spec:
+                restartPolicy: Never
+                automountServiceAccountToken: false
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 12345
+                  fsGroup: 12345
+                  seccompProfile:
+                    type: RuntimeDefault
+                containers:
+                  - name: k6-canary-gate
+                    image: grafana/k6:0.54.0
+                    securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop: ["ALL"]
+                    resources:
+                      requests:
+                        cpu: "100m"
+                        memory: "128Mi"
+                      limits:
+                        cpu: "500m"
+                        memory: "512Mi"
+                    command:
+                      - k6
+                      - run
+                      - /scripts/canary-analysis.js
+                    env:
+                      - name: BASE_URL
+                        # El placeholder de argumento (sintaxis propia de Argo
+                        # Rollouts, NO de Helm) lo resuelve el controller de
+                        # Rollouts al crear cada AnalysisRun, sustituyendo el
+                        # arg "canary-service" declarado en rollout.yaml
+                        # (analysis.args). Va entre backticks para que Helm lo
+                        # deje pasar tal cual, sin intentar evaluarlo.
+                        value: "http://{{ `{{args.canary-service}}` }}:{{ .Values.service.port }}"
+                      - name: ERROR_RATE_THRESHOLD
+                        value: {{ .Values.rollout.analysis.errorRateThreshold | quote }}
+                      - name: P95_THRESHOLD_MS
+                        value: {{ .Values.rollout.analysis.p95ThresholdMs | quote }}
+                      - name: VUS
+                        value: {{ .Values.rollout.analysis.vus | quote }}
+                      - name: DURATION_SECONDS
+                        value: {{ .Values.rollout.analysis.durationSeconds | quote }}
+                      - name: K6_TMP_DIR
+                        value: /tmp
+                    volumeMounts:
+                      - name: k6-script
+                        mountPath: /scripts
+                        readOnly: true
+                      - name: tmp
+                        mountPath: /tmp
+                volumes:
+                  - name: k6-script
+                    configMap:
+                      name: {{ include "sa-platform.fullname" . }}-canary-analysis-script
+                  - name: tmp
+                    emptyDir: {}
+{{- end }}

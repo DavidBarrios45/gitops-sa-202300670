@@ -1,0 +1,23 @@
+{{- if .Values.namespaceGovernance.enabled }}
+# LimitRange (bloque F): valores por defecto y máximos por contenedor.
+# 'default' (limits) ajustado a 512Mi: suficiente para Postgres/RabbitMQ en dev
+# y para contenedores sin limits (como el Job db-init), sin llenar la quota.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: {{ .Release.Name }}-limits
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: "50m"
+        memory: "64Mi"
+      default:
+        cpu: "500m"
+        memory: "512Mi"
+      max:
+        cpu: "2"
+        memory: "2Gi"
+{{- end }}

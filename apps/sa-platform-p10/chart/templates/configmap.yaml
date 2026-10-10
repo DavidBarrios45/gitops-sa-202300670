@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sa-platform.configMapName" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+data:
+  # Variables NO sensibles. Las URLs internas se construyen con el nombre del
+  # release (los Services se llaman <release>-<servicio>).
+  LOG_LEVEL: {{ .Values.global.config.logLevel | default "info" | quote }}
+  JWT_TTL: {{ .Values.global.config.jwtTtl | default "3600" | quote }}
+  QUETZALES_POR_PUNTO: {{ .Values.global.config.quetzalesPorPunto | default "20" | quote }}
+  CARNE: {{ .Values.global.config.carne | quote }}
+  AUTH_URL: {{ printf "http://%s-auth-service:3001" .Release.Name | quote }}
+  CATALOGO_URL: {{ printf "http://%s-catalogo-service:3002" .Release.Name | quote }}
+  PEDIDOS_URL: {{ printf "http://%s-pedidos-service:3003" .Release.Name | quote }}
+  PAGOS_URL: {{ printf "http://%s-pagos-service:3004" .Release.Name | quote }}
+  CLIENTES_URL: {{ printf "http://%s-clientes-service:3005" .Release.Name | quote }}
+  # Conexión a RabbitMQ (host y puerto; credenciales van en el Secret)
+  RABBITMQ_HOST: {{ printf "%s-rabbitmq" .Release.Name | quote }}
+  RABBITMQ_PORT: "5672"

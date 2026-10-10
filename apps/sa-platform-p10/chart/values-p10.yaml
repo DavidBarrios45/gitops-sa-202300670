@@ -1,0 +1,32 @@
+# P10: sobreescribe SOLO lo que cambia respecto a P8/P9 (copia aislada del chart; el chart
+# original apps/sa-platform no se toca). Imagenes instrumentadas con OpenTelemetry + OTLP.
+# Orden de valueFiles: values.yaml, values-eks.yaml, values-kind.yaml (solo kind), values-p10.yaml.
+#
+# kind local: imagenes sa-p10/* cargadas con "kind load docker-image" (sin firma).
+# EKS: se reemplaza repository por ghcr.io/davidbarrios45/sa-p10-<svc> (firmadas, Fase 10).
+api-gateway:
+  image:
+    repository: sa-p10/api-gateway
+    tag: p10-dev
+  env:
+    OTEL_SERVICE_NAME: api-gateway
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc:4318
+    OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+
+pedidos-service:
+  image:
+    repository: sa-p10/pedidos-service
+    tag: p10-dev
+  env:
+    OTEL_SERVICE_NAME: pedidos-service
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc:4318
+    OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+
+pagos-service:
+  image:
+    repository: sa-p10/pagos-service
+    tag: p10-dev
+  env:
+    OTEL_SERVICE_NAME: pagos-service
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc:4318
+    OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf

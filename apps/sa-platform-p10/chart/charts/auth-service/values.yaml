@@ -1,0 +1,27 @@
+# Valores del subchart auth-service. El Deployment lo genera el molde compartido.
+image:
+  repository: sa/auth-service
+  tag: dev
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+service:
+  type: ClusterIP
+  port: 3001
+
+features:
+  database: auth_db
+  prismaMigrate: true
+  healthCheck: http
+  healthPath: /health
+
+env: {}
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "250m"
+    memory: "256Mi"

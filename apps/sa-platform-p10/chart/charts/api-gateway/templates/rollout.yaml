@@ -1,0 +1,58 @@
+{{- if .Values.rollout.enabled }}
+# ============================================================================
+# Rollout (Argo Rollouts) en vez de Deployment: entrega progresiva del
+# api-gateway con canary + AnalysisTemplate en cada paso (P8, sección 3.2 del
+# enunciado: "estrategia canary o blue-green con al menos tres pasos de
+# promoción, cada uno condicionado a un AnalysisTemplate").
+#
+# Reusa exactamente el mismo podTemplate que usaría el Deployment normal
+# (sa-platform.podTemplate, ver templates/_deployment.tpl del chart padre) —
+# el único cambio real frente a los demás microservicios es el controlador.
+# ============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ include "sa-platform.fullname" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas | default 2 }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      {{- include "sa-platform.selectorLabels" . | nindent 6 }}
+  template:
+    {{- include "sa-platform.podTemplate" . | nindent 4 }}
+  strategy:
+    canary:
+      # Servicios que Rollouts patchea automáticamente con el selector del
+      # ReplicaSet estable/canario (rollouts-pod-template-hash).
+      stableService: {{ include "sa-platform.fullname" . }}
+      canaryService: {{ include "sa-platform.fullname" . }}-canary
+      trafficRouting:
+        nginx:
+          # El Ingress "estable" ya existente (templates/ingress.yaml). Rollouts
+          # crea y mantiene automáticamente un segundo Ingress "<nombre>-canary"
+          # con las anotaciones de peso de nginx — no se declara a mano.
+          stableIngress: {{ include "sa-platform.fullname" . }}
+      # Con trafficRouting el peso NO depende de réplicas (a diferencia del
+      # canary "básico" por número de Pods) — por eso el HPA queda
+      # desactivado (ver values.yaml: autoscaling.enabled forzado a false
+      # cuando rollout.enabled=true) y replicas queda fija.
+      abortScaleDownDelaySeconds: 30
+      steps:
+        {{- range .Values.rollout.steps }}
+        - setWeight: {{ .weight }}
+          {{- if .pauseSeconds }}
+          pause:
+            duration: {{ .pauseSeconds }}s
+          {{- end }}
+        - analysis:
+            templates:
+              - templateName: {{ include "sa-platform.fullname" $ }}-canary-gate
+            args:
+              - name: canary-service
+                value: {{ include "sa-platform.fullname" $ }}-canary.{{ $.Release.Namespace }}.svc.cluster.local
+        {{- end }}
+  progressDeadlineSeconds: 900
+{{- end }}

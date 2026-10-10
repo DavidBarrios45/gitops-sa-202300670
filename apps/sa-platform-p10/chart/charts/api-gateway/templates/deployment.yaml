@@ -1,0 +1,3 @@
+{{- if not .Values.rollout.enabled }}
+{{- include "sa-platform.deployment" . }}
+{{- end }}

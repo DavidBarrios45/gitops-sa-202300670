@@ -1,0 +1,42 @@
+# P10: la plataforma con los 3 servicios instrumentados. Copia aislada del chart
+# (apps/sa-platform-p10) para no alterar lo que despliega P9.
+# Usa el MISMO nombre de Application ("sa-platform") que root-app/root-app-kind porque en un
+# mismo clúster nunca coexisten: en el kind de P10 se retira el root-app de P9 (sin cascada)
+# y este root-app-p10 toma el control. Variante EKS: quitar values-kind.yaml (Fase 10).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-platform
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
+    targetRevision: main
+    path: apps/sa-platform-p10/chart
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-eks.yaml
+        - values-kind.yaml
+        - values-p10.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sa-p8
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+        - '.spec.template.spec.initContainers[].image'
+    - group: batch
+      kind: CronJob
+      jqPathExpressions:
+        - '.spec.jobTemplate.spec.template.spec.containers[].image'
+        - '.spec.jobTemplate.spec.template.spec.initContainers[].image'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

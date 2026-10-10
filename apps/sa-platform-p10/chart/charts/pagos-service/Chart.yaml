@@ -1,0 +1,6 @@
+apiVersion: v2
+name: pagos-service
+description: Microservicio de pagos
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

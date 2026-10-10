@@ -1,0 +1,6 @@
+apiVersion: v2
+name: catalogo-service
+description: Microservicio del menú (catálogo) - API GraphQL
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

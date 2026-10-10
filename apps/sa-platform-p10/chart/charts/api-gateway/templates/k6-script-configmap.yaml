@@ -1,0 +1,11 @@
+{{- if .Values.rollout.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sa-platform.fullname" . }}-canary-analysis-script
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+data:
+  canary-analysis.js: |
+{{ .Files.Get "files/canary-analysis.js" | indent 4 }}
+{{- end }}

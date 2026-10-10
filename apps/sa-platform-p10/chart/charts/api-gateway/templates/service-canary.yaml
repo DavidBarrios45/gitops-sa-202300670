@@ -1,0 +1,21 @@
+{{- if .Values.rollout.enabled }}
+# Service "canario": Argo Rollouts le agrega/gestiona el selector
+# rollouts-pod-template-hash para que solo enrute a los Pods de la nueva
+# versión durante la promoción. El AnalysisTemplate golpea este Service
+# (nunca el Ingress) para probar la versión candidata de forma aislada.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sa-platform.fullname" . }}-canary
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type | default "ClusterIP" }}
+  selector:
+    {{- include "sa-platform.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}
