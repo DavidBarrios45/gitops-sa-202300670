@@ -1,0 +1,58 @@
+# P10 Fase 1 - OpenTelemetry Collector (DaemonSet). Un solo agente por nodo:
+#   - logs de contenedores (filelog) -> Loki (OTLP)
+#   - OTLP de las apps: trazas -> Tempo, metricas -> Prometheus (remote write)
+fullnameOverride: otel-collector
+mode: daemonset
+image:
+  repository: otel/opentelemetry-collector-contrib
+command:
+  name: otelcol-contrib
+presets:
+  logsCollection: { enabled: true, includeCollectorLogs: false }
+  kubernetesAttributes: { enabled: true }
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 384Mi }
+ports:
+  otlp: { enabled: true }
+  otlp-http: { enabled: true }
+  jaeger-compact: { enabled: false }
+  jaeger-thrift: { enabled: false }
+  jaeger-grpc: { enabled: false }
+  zipkin: { enabled: false }
+service:
+  enabled: true   # servicio estable para que las apps envien OTLP a otel-collector:4317/4318
+config:
+  receivers:
+    jaeger: null
+    zipkin: null
+    prometheus: null
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    batch: {}
+  exporters:
+    otlp_http/loki:
+      endpoint: http://loki.observability.svc:3100/otlp
+    otlp_grpc/tempo:
+      endpoint: tempo.observability.svc:4317
+      tls: { insecure: true }
+    prometheusremotewrite:
+      endpoint: http://kps-prometheus.observability.svc:9090/api/v1/write
+      resource_to_telemetry_conversion: { enabled: true }
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, k8s_attributes, batch]
+        exporters: [otlp_grpc/tempo]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, k8s_attributes, batch]
+        exporters: [prometheusremotewrite]
+      logs:
+        receivers: [file_log]
+        processors: [memory_limiter, k8s_attributes, batch]
+        exporters: [otlp_http/loki]

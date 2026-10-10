@@ -1,0 +1,26 @@
+# P10 Fase 1 - recursos propios del stack (PodMonitor de ingress-nginx; luego reglas y dashboards).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: obs-extras
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
+    targetRevision: main
+    path: apps/observability/extras
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 8
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }

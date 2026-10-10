@@ -1,0 +1,81 @@
+# P10 Fase 1 - Prometheus + Alertmanager + Grafana + exporters.
+# Sin PVC (emptyDir) y retencion corta: es un stack de demostracion; el estado util
+# (reglas, dashboards, datasources) vive en Git, no en disco.
+fullnameOverride: kps
+defaultRules:
+  create: true
+  rules:
+    etcd: false
+    kubeSchedulerAlerting: false
+    kubeControllerManager: false
+    kubeProxy: false
+# kind/EKS administrado no exponen estos componentes del control plane
+kubeEtcd: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeControllerManager: { enabled: false }
+kubeProxy: { enabled: false }
+
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    # Descubre ServiceMonitor/PodMonitor/PrometheusRule de cualquier release/namespace
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    # El OTel Collector envia las metricas de aplicacion por remote write
+    enableRemoteWriteReceiver: true
+    enableFeatures: [exemplar-storage]
+    resources:
+      requests: { cpu: 100m, memory: 400Mi }
+      limits: { cpu: "1", memory: 1Gi }
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { cpu: 100m, memory: 128Mi }
+
+grafana:
+  adminPassword: p10-observabilidad   # solo demo local; no es un secreto real
+  defaultDashboardsTimezone: America/Guatemala
+  resources:
+    requests: { cpu: 50m, memory: 150Mi }
+    limits: { cpu: 500m, memory: 400Mi }
+  sidecar:
+    dashboards: { enabled: true, searchNamespace: ALL }
+    datasources: { enabled: true, searchNamespace: ALL }
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      url: http://loki.observability.svc:3100
+      jsonData:
+        derivedFields:
+          - name: trace_id
+            matcherRegex: '"trace_id":"(\w+)"'
+            url: '$${__value.raw}'
+            datasourceUid: tempo
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      url: http://tempo.observability.svc:3200
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: loki
+          filterByTraceID: true
+        serviceMap:
+          datasourceUid: prometheus
+
+prometheusOperator:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 200Mi }
+kube-state-metrics:
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits: { cpu: 100m, memory: 128Mi }
+prometheus-node-exporter:
+  resources:
+    requests: { cpu: 10m, memory: 24Mi }
+    limits: { cpu: 100m, memory: 64Mi }

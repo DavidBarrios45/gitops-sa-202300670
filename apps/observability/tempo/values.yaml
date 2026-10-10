@@ -1,0 +1,12 @@
+# P10 Fase 1 - Tempo en modo binario unico; recibe OTLP del Collector.
+tempo:
+  retention: 48h
+  receivers:
+    otlp:
+      protocols:
+        grpc: { endpoint: "0.0.0.0:4317" }
+        http: { endpoint: "0.0.0.0:4318" }
+  resources:
+    requests: { cpu: 50m, memory: 200Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+persistence: { enabled: false }

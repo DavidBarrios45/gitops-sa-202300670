@@ -1,0 +1,41 @@
+# P10 Fase 1 - Loki monolitico (SingleBinary), almacenamiento en filesystem efimero.
+deploymentMode: SingleBinary
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index: { prefix: loki_index_, period: 24h }
+  limits_config:
+    retention_period: 48h
+    allow_structured_metadata: true
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+  pattern_ingester: { enabled: false }
+singleBinary:
+  replicas: 1
+  persistence: { enabled: false }
+  extraVolumes: [{ name: data, emptyDir: {} }]
+  extraVolumeMounts: [{ name: data, mountPath: /var/loki }]
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 768Mi }
+backend: { replicas: 0 }
+read: { replicas: 0 }
+write: { replicas: 0 }
+chunksCache: { enabled: false }
+resultsCache: { enabled: false }
+gateway: { enabled: false }
+lokiCanary: { enabled: false }
+test: { enabled: false }
+monitoring:
+  selfMonitoring: { enabled: false, grafanaAgent: { installOperator: false } }
+  serviceMonitor: { enabled: false }
