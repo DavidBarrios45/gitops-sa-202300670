@@ -1,0 +1,117 @@
+# P10 Fase 4 - SLO como reglas de registro (recording rules). Convencion de nombres: nivel:metrica:operacion.
+#
+# SLO-1 Disponibilidad: >= 99.5 % de las peticiones al api-gateway sin 5xx, ventana 28 d (presupuesto 0.005).
+#   SLI = 1 - errores5xx/peticiones, medido en el borde (gateway). Las probes de kubelet no cuentan (se excluyen en el servicio).
+# SLO-2 Rapidez: >= 95 % de las mutaciones crearPedido < 500 ms Y sin error, ventana 28 d (presupuesto 0.05).
+#   SLI = peticiones con success="true" y duracion <= 0.5 s / total. Sale de graphql_operation_duration_seconds porque
+#   crearPedido y las consultas comparten la ruta HTTP y el ingress no las separa.
+#
+# burn_rate = (tasa de error observada en la ventana) / (presupuesto). 1 = se agota justo al cierre de los 28 d;
+# 14.4 = se agotaria en ~2 dias. error_budget_consumed_ratio usa la ventana 28d: 1.0 = presupuesto agotado.
+#
+# LIMITE DECLARADO: Prometheus guarda 2 dias (sin PVC), asi que rate(...[28d]) solo ve los datos existentes: el
+# "consumido a 28d" es en realidad el consumido desde que hay datos (maximo 2 d). Se declara en el informe.
+# Las expresiones devuelven vacio (no 0) cuando no hay trafico: sin trafico no hay SLI, ni alerta.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: slo-sa-platform
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: sa-platform-slo
+spec:
+  groups:
+    - name: slo-ventanas-cortas
+      interval: 30s
+      rules:
+        - record: slo:availability:requests:rate5m
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[5m]))
+        - record: slo:availability:errors:rate5m
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code=~"5.."}[5m])) or vector(0)
+        - record: slo:availability:error_ratio_rate5m
+          expr: slo:availability:errors:rate5m / slo:availability:requests:rate5m
+        - record: slo:availability:burn_rate5m
+          expr: slo:availability:error_ratio_rate5m / 0.005
+        - record: slo:crearpedido:requests:rate5m
+          expr: sum(rate(graphql_operation_duration_seconds_count{operation="crearPedido"}[5m]))
+        - record: slo:crearpedido:good:rate5m
+          expr: sum(rate(graphql_operation_duration_seconds_bucket{operation="crearPedido",le="0.5",success="true"}[5m])) or vector(0)
+        - record: slo:crearpedido:slow_ratio_rate5m
+          expr: 1 - (slo:crearpedido:good:rate5m / slo:crearpedido:requests:rate5m)
+        - record: slo:crearpedido:burn_rate5m
+          expr: slo:crearpedido:slow_ratio_rate5m / 0.05
+        - record: slo:availability:requests:rate30m
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[30m]))
+        - record: slo:availability:errors:rate30m
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code=~"5.."}[30m])) or vector(0)
+        - record: slo:availability:error_ratio_rate30m
+          expr: slo:availability:errors:rate30m / slo:availability:requests:rate30m
+        - record: slo:availability:burn_rate30m
+          expr: slo:availability:error_ratio_rate30m / 0.005
+        - record: slo:crearpedido:requests:rate30m
+          expr: sum(rate(graphql_operation_duration_seconds_count{operation="crearPedido"}[30m]))
+        - record: slo:crearpedido:good:rate30m
+          expr: sum(rate(graphql_operation_duration_seconds_bucket{operation="crearPedido",le="0.5",success="true"}[30m])) or vector(0)
+        - record: slo:crearpedido:slow_ratio_rate30m
+          expr: 1 - (slo:crearpedido:good:rate30m / slo:crearpedido:requests:rate30m)
+        - record: slo:crearpedido:burn_rate30m
+          expr: slo:crearpedido:slow_ratio_rate30m / 0.05
+        - record: slo:availability:requests:rate1h
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[1h]))
+        - record: slo:availability:errors:rate1h
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code=~"5.."}[1h])) or vector(0)
+        - record: slo:availability:error_ratio_rate1h
+          expr: slo:availability:errors:rate1h / slo:availability:requests:rate1h
+        - record: slo:availability:burn_rate1h
+          expr: slo:availability:error_ratio_rate1h / 0.005
+        - record: slo:crearpedido:requests:rate1h
+          expr: sum(rate(graphql_operation_duration_seconds_count{operation="crearPedido"}[1h]))
+        - record: slo:crearpedido:good:rate1h
+          expr: sum(rate(graphql_operation_duration_seconds_bucket{operation="crearPedido",le="0.5",success="true"}[1h])) or vector(0)
+        - record: slo:crearpedido:slow_ratio_rate1h
+          expr: 1 - (slo:crearpedido:good:rate1h / slo:crearpedido:requests:rate1h)
+        - record: slo:crearpedido:burn_rate1h
+          expr: slo:crearpedido:slow_ratio_rate1h / 0.05
+    - name: slo-ventanas-largas
+      interval: 2m
+      rules:
+        - record: slo:availability:requests:rate6h
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[6h]))
+        - record: slo:availability:errors:rate6h
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code=~"5.."}[6h])) or vector(0)
+        - record: slo:availability:error_ratio_rate6h
+          expr: slo:availability:errors:rate6h / slo:availability:requests:rate6h
+        - record: slo:availability:burn_rate6h
+          expr: slo:availability:error_ratio_rate6h / 0.005
+        - record: slo:crearpedido:requests:rate6h
+          expr: sum(rate(graphql_operation_duration_seconds_count{operation="crearPedido"}[6h]))
+        - record: slo:crearpedido:good:rate6h
+          expr: sum(rate(graphql_operation_duration_seconds_bucket{operation="crearPedido",le="0.5",success="true"}[6h])) or vector(0)
+        - record: slo:crearpedido:slow_ratio_rate6h
+          expr: 1 - (slo:crearpedido:good:rate6h / slo:crearpedido:requests:rate6h)
+        - record: slo:crearpedido:burn_rate6h
+          expr: slo:crearpedido:slow_ratio_rate6h / 0.05
+        - record: slo:availability:requests:rate28d
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway"}[28d]))
+        - record: slo:availability:errors:rate28d
+          expr: sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",http_response_status_code=~"5.."}[28d])) or vector(0)
+        - record: slo:availability:error_ratio_rate28d
+          expr: slo:availability:errors:rate28d / slo:availability:requests:rate28d
+        - record: slo:availability:burn_rate28d
+          expr: slo:availability:error_ratio_rate28d / 0.005
+        - record: slo:crearpedido:requests:rate28d
+          expr: sum(rate(graphql_operation_duration_seconds_count{operation="crearPedido"}[28d]))
+        - record: slo:crearpedido:good:rate28d
+          expr: sum(rate(graphql_operation_duration_seconds_bucket{operation="crearPedido",le="0.5",success="true"}[28d])) or vector(0)
+        - record: slo:crearpedido:slow_ratio_rate28d
+          expr: 1 - (slo:crearpedido:good:rate28d / slo:crearpedido:requests:rate28d)
+        - record: slo:crearpedido:burn_rate28d
+          expr: slo:crearpedido:slow_ratio_rate28d / 0.05
+        - record: slo:availability:error_budget_consumed_ratio
+          expr: slo:availability:burn_rate28d
+        - record: slo:availability:error_budget_remaining_ratio
+          expr: 1 - slo:availability:error_budget_consumed_ratio
+        - record: slo:crearpedido:error_budget_consumed_ratio
+          expr: slo:crearpedido:burn_rate28d
+        - record: slo:crearpedido:error_budget_remaining_ratio
+          expr: 1 - slo:crearpedido:error_budget_consumed_ratio
