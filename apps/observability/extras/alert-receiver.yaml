@@ -1,0 +1,94 @@
+# P10 Fase 5 (D3) - Receptor webhook minimo de Alertmanager. No notifica a nadie: registra cada alerta recibida como
+# una linea JSON en stdout (queda en Loki). Es el "destino" demostrable sin Slack/correo ni credenciales externas.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alert-receiver-code
+  namespace: observability
+data:
+  receiver.py: |
+    import json, sys
+    from datetime import datetime, timezone
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200); self.end_headers(); self.wfile.write(b"ok")
+
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            try:
+                data = json.loads(body)
+            except ValueError:
+                data = {"alerts": []}
+            for a in data.get("alerts", []):
+                print(json.dumps({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "evento": "alerta_recibida",
+                    "estado": a.get("status"),
+                    "alertname": a.get("labels", {}).get("alertname"),
+                    "severidad": a.get("labels", {}).get("severity"),
+                    "accion": a.get("labels", {}).get("accion"),
+                    "slo": a.get("labels", {}).get("slo"),
+                    "inicio": a.get("startsAt"),
+                    "resumen": a.get("annotations", {}).get("summary"),
+                    "porque_amerita": a.get("annotations", {}).get("porque_amerita"),
+                    "runbook_url": a.get("annotations", {}).get("runbook_url"),
+                }, ensure_ascii=False), flush=True)
+            self.send_response(200); self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    print(json.dumps({"evento": "receptor_iniciado", "puerto": 8080}), flush=True)
+    HTTPServer(("0.0.0.0", 8080), H).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-receiver
+  namespace: observability
+  labels: { app: alert-receiver }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: alert-receiver }
+  template:
+    metadata:
+      labels: { app: alert-receiver }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: receiver
+          image: python:3.12-alpine
+          command: ["python", "-u", "/app/receiver.py"]
+          ports:
+            - { name: http, containerPort: 8080 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 10m, memory: 24Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          readinessProbe:
+            httpGet: { path: /, port: http }
+          volumeMounts:
+            - { name: code, mountPath: /app }
+      volumes:
+        - name: code
+          configMap: { name: alert-receiver-code }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-receiver
+  namespace: observability
+spec:
+  selector: { app: alert-receiver }
+  ports:
+    - { name: http, port: 8080, targetPort: http }

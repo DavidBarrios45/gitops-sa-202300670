@@ -1,0 +1,80 @@
+# P10 Fase 5 - Alertas por CONSUMO DEL PRESUPUESTO DE ERROR (burn rate multiventana), no por umbral instantaneo.
+# Metodologia (SRE Workbook, "multiwindow, multi-burn-rate"): la alerta exige que la tasa de consumo sea alta
+# tanto en una ventana larga (confirma que es sostenido) como en una corta (confirma que sigue pasando).
+#   Rapida / pagina :  burn > 14.4 en 1h  Y  5m   -> consume el 2 % del presupuesto de 28 d en 1 h
+#                      (EXCEPCION crearPedido: ventanas 30m Y 5m, ver abajo)
+#   Lenta  / ticket :  burn > 6    en 6h  Y  30m  -> consume el 5 % del presupuesto de 28 d en 6 h
+# Por que crearPedido usa 30m y no 1h: su presupuesto es 5 % (no 0.5 %), asi que burn 14.4 equivale a 72 % de peticiones
+# malas. Con ventana de 1h una falla total tardaria ~43 min en alertar; con 30m tarda ~22 min (consume >= 1 % del presupuesto
+# en 30 min). Sigue siendo lento: una falla TOTAL se detecta antes por SLO-1 (5xx). Limite declarado para el informe.
+# Piso de trafico: con muy pocas peticiones una sola falla dispara el ratio; sin gente usando el sistema no hay a quien
+# despertar. Los pisos evitan ese ruido. Cada alerta enlaza a su runbook y dice por que amerita intervencion.
+# Reglas de registro de las que depende: slo-rules.yaml.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: slo-alertas-sa-platform
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: sa-platform-slo
+spec:
+  groups:
+    - name: slo-disponibilidad
+      rules:
+        - alert: DisponibilidadPresupuestoAgotandoseRapido
+          expr: |
+            slo:availability:burn_rate1h > 14.4 and slo:availability:burn_rate5m > 14.4
+            and slo:availability:requests:rate5m > 0.1
+          for: 2m
+          labels: { severity: critical, accion: pagina, slo: disponibilidad }
+          annotations:
+            summary: "Los usuarios reciben errores 5xx: el presupuesto de disponibilidad se agota en horas"
+            description: "Burn rate {{ $value | humanize }}x (1h) con {{ with query \"slo:availability:error_ratio_rate5m\" }}{{ . | first | value | humanizePercentage }}{{ end }} de errores en 5 min. A este ritmo el presupuesto de 28 d dura menos de 2 dias."
+            porque_amerita: "Es el ritmo que consume el 2 % del presupuesto mensual por hora: si nadie actua, el SLO se incumple esta semana, y los usuarios ya estan fallando ahora."
+            runbook_url: https://github.com/DavidBarrios45/Practicas-SA-B-202300670/blob/main/P10/docs/runbooks/disponibilidad-rapida.md
+        - alert: DisponibilidadPresupuestoAgotandoseLento
+          expr: |
+            slo:availability:burn_rate6h > 6 and slo:availability:burn_rate30m > 6
+            and slo:availability:requests:rate30m > 0.1
+          for: 15m
+          labels: { severity: warning, accion: ticket, slo: disponibilidad }
+          annotations:
+            summary: "Fuga sostenida de disponibilidad: errores 5xx por encima de lo tolerable durante horas"
+            description: "Burn rate {{ $value | humanize }}x (6h). No es una caida total, pero sostenida agota el presupuesto en unos 5 dias."
+            porque_amerita: "Un goteo que nadie ve termina incumpliendo el SLO sin que ninguna alerta rapida salte; requiere un ticket en horario laboral, no despertar a nadie."
+            runbook_url: https://github.com/DavidBarrios45/Practicas-SA-B-202300670/blob/main/P10/docs/runbooks/disponibilidad-lenta.md
+    - name: slo-crearpedido-latencia
+      rules:
+        - alert: CrearPedidoPresupuestoAgotandoseRapido
+          expr: |
+            slo:crearpedido:burn_rate30m > 14.4 and slo:crearpedido:burn_rate5m > 14.4
+            and slo:crearpedido:requests:rate5m > 0.05
+          for: 2m
+          labels: { severity: critical, accion: pagina, slo: crearpedido }
+          annotations:
+            summary: "Crear un pedido esta lento o fallando para la mayoria de los clientes"
+            description: "Burn rate {{ $value | humanize }}x (30m): {{ with query \"slo:crearpedido:slow_ratio_rate5m\" }}{{ . | first | value | humanizePercentage }}{{ end }} de los crearPedido de los ultimos 5 min tardan mas de 500 ms o fallan (el SLO tolera 5 %)."
+            porque_amerita: "crearPedido es la operacion que genera ingresos; mas del 70 % lentos/fallidos equivale a perder ventas ahora."
+            runbook_url: https://github.com/DavidBarrios45/Practicas-SA-B-202300670/blob/main/P10/docs/runbooks/crearpedido-rapida.md
+        - alert: CrearPedidoPresupuestoAgotandoseLento
+          expr: |
+            slo:crearpedido:burn_rate6h > 6 and slo:crearpedido:burn_rate30m > 6
+            and slo:crearpedido:requests:rate30m > 0.05
+          for: 15m
+          labels: { severity: warning, accion: ticket, slo: crearpedido }
+          annotations:
+            summary: "Degradacion sostenida de la latencia de crearPedido"
+            description: "Burn rate {{ $value | humanize }}x (6h): una de cada tres creaciones de pedido supera 500 ms o falla desde hace horas."
+            porque_amerita: "Degradacion lenta tipica de una regresion o saturacion creciente; hay tiempo para investigar, pero si se ignora agota el presupuesto en dias."
+            runbook_url: https://github.com/DavidBarrios45/Practicas-SA-B-202300670/blob/main/P10/docs/runbooks/crearpedido-lenta.md
+    - name: slo-telemetria
+      rules:
+        - alert: TelemetriaGatewayAusente
+          expr: absent(http_server_request_duration_seconds_count{service_name="api-gateway"})
+          for: 10m
+          labels: { severity: warning, accion: ticket, slo: telemetria }
+          annotations:
+            summary: "Prometheus no recibe metricas del api-gateway: los SLO estan ciegos"
+            description: "No hay serie http_server_request_duration_seconds_count del gateway desde hace 10 min. Si el gateway cayera ahora ninguna alerta de SLO saltaria."
+            porque_amerita: "Sin metricas el sistema de alertas deja de ser confiable: un silencio no significa salud."
+            runbook_url: https://github.com/DavidBarrios45/Practicas-SA-B-202300670/blob/main/P10/docs/runbooks/telemetria-ausente.md

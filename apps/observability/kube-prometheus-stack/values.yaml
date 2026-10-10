@@ -31,6 +31,31 @@ prometheus:
       limits: { cpu: "1", memory: 1Gi }
 
 alertmanager:
+  # Enrutado (D3): solo las alertas de SLO (etiqueta "slo") llegan al webhook; el resto de alertas por defecto
+  # de kube-prometheus-stack va a "null" para no mezclar ruido de plataforma con las alertas de servicio.
+  config:
+    global: { resolve_timeout: 5m }
+    inhibit_rules:
+      # Si ya se esta paginando por un SLO, su version lenta (ticket) es redundante.
+      - source_matchers: ['accion = pagina']
+        target_matchers: ['accion = ticket']
+        equal: ['slo']
+    route:
+      receiver: "null"
+      group_by: ['alertname', 'slo']
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 12h
+      routes:
+        - receiver: webhook-p10
+          matchers: ['slo =~ ".+"']
+          repeat_interval: 1h
+    receivers:
+      - name: "null"
+      - name: webhook-p10
+        webhook_configs:
+          - url: http://alert-receiver.observability.svc:8080/alerta
+            send_resolved: true
   alertmanagerSpec:
     resources:
       requests: { cpu: 10m, memory: 32Mi }
