@@ -53,17 +53,27 @@ grafana:
       jsonData:
         derivedFields:
           - name: trace_id
-            matcherRegex: '"trace_id":"(\w+)"'
+            matcherRegex: '"trace_id":\s*"(\w+)"'
+            matcherType: regex
             url: '$${__value.raw}'
+            urlDisplayLabel: Ver traza en Tempo
             datasourceUid: tempo
     - name: Tempo
       uid: tempo
       type: tempo
       url: http://tempo.observability.svc:3200
       jsonData:
+        # Traza -> logs: el stream de Loki no lleva el servicio como etiqueta util (service_name=sa-platform),
+        # asi que se usa una consulta propia: todos los logs del namespace con ese trace_id en la linea JSON.
         tracesToLogsV2:
           datasourceUid: loki
-          filterByTraceID: true
+          spanStartTimeShift: '-2m'
+          spanEndTimeShift: '2m'
+          filterByTraceID: false
+          filterBySpanID: false
+          customQuery: true
+          query: '{k8s_namespace_name="sa-p8"} |= "$${__trace.traceId}"'
+        nodeGraph: { enabled: true }
         serviceMap:
           datasourceUid: prometheus
 
