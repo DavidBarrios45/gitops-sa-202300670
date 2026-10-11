@@ -64,9 +64,10 @@ alertmanager:
 grafana:
   adminPassword: p10-observabilidad   # solo demo local; no es un secreto real
   defaultDashboardsTimezone: America/Guatemala
+  # Fase 9: con 500m Grafana 13 quedaba estrangulado (87 % de throttling) y su API tardaba >30 s con ~25 dashboards.
   resources:
-    requests: { cpu: 50m, memory: 150Mi }
-    limits: { cpu: 500m, memory: 400Mi }
+    requests: { cpu: 200m, memory: 256Mi }
+    limits: { cpu: 1500m, memory: 768Mi }
   sidecar:
     dashboards: { enabled: true, searchNamespace: ALL }
     datasources: { enabled: true, searchNamespace: ALL }
