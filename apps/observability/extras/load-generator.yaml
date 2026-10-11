@@ -2,7 +2,7 @@
 # El AnalysisTemplate solo lee Prometheus; este Deployment mantiene trafico "de usuarios" de fondo
 # (~4 req/s) por el Ingress para que p95 y tasa de error del canary tengan muestras suficientes.
 # Entra por ingress-nginx (igual que un usuario real), asi el peso del canary reparte el trafico.
-# Mezcla: lecturas baratas (/health, catalogo, misPedidos, /pagos/mi-saldo) y un goteo de crearPedido (~0.2 req/s).
+# Mezcla: lecturas baratas (/health, catalogo, misPedidos, /pagos/mi-saldo) y un goteo de crearPedido + pagarPedido (~0.2 req/s).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -82,11 +82,22 @@ data:
         if not state["producto"]:
             find_product()
             return
-        s, _ = gql("/pedidos/graphql",
+        s, b = gql("/pedidos/graphql",
                    "mutation($i: PedidoInput!) { crearPedido(input: $i) { id estado total } }",
                    {"i": {"items": [{"productoId": state["producto"], "cantidad": 1}]}})
         if s == 401:
             login()
+            return
+        # Metricas de negocio: paga el pedido (75 % aprobado, 25 % rechazado) para que
+        # pagos_procesados_total / pagos_rechazados_total tengan datos en el tablero.
+        try:
+            pid = json.loads(b)["data"]["crearPedido"]["id"]
+        except Exception:
+            return
+        forzar = "aprobado" if random.random() < 0.75 else "rechazado"
+        gql("/pedidos/graphql",
+            "mutation($id: ID!, $f: String) { pagarPedido(id: $id, forzar: $f) { aprobado mensaje } }",
+            {"id": pid, "f": forzar})
 
     def loop(fn, rps):
         period = 1.0 / rps
