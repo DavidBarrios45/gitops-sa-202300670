@@ -1,0 +1,140 @@
+# P10 Fase 6 (D5) - Generador de carga continuo, SEPARADO del analisis del canary.
+# El AnalysisTemplate solo lee Prometheus; este Deployment mantiene trafico "de usuarios" de fondo
+# (~4 req/s) por el Ingress para que p95 y tasa de error del canary tengan muestras suficientes.
+# Entra por ingress-nginx (igual que un usuario real), asi el peso del canary reparte el trafico.
+# Mezcla: lecturas baratas (/health, catalogo, misPedidos) y un goteo de crearPedido (~0.2 req/s).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: load-generator-code
+  namespace: observability
+data:
+  loadgen.py: |
+    import json, os, random, threading, time, urllib.request, urllib.error
+
+    BASE = os.environ.get("TARGET", "http://ingress-nginx-controller.ingress-nginx.svc")
+    RPS_READ = float(os.environ.get("RPS_READ", "4"))
+    RPS_ORDER = float(os.environ.get("RPS_ORDER", "0.2"))
+    PASSWORD = "clave12345"
+    state = {"token": None, "producto": None}
+    lock = threading.Lock()
+
+    def log(**kw):
+        kw["ts"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        print(json.dumps(kw, ensure_ascii=False), flush=True)
+
+    def call(method, path, body=None, token=None):
+        req = urllib.request.Request(BASE + path, method=method,
+                                     data=json.dumps(body).encode() if body is not None else None)
+        req.add_header("Content-Type", "application/json")
+        if token:
+            req.add_header("Authorization", "Bearer " + token)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+        except Exception as e:
+            return 0, str(e).encode()
+
+    def login():
+        correo = "loadgen-%d@example.com" % int(time.time())
+        s, _ = call("POST", "/auth/register", {"nombre": "Load Generator", "correo": correo, "password": PASSWORD})
+        s, b = call("POST", "/auth/login", {"correo": correo, "password": PASSWORD})
+        if s == 200:
+            with lock:
+                state["token"] = json.loads(b)["token"]
+            log(evento="login_ok")
+            return True
+        log(evento="login_fallo", status=s)
+        return False
+
+    def gql(path, query, variables=None):
+        return call("POST", path, {"query": query, "variables": variables or {}}, state["token"])
+
+    def find_product():
+        s, b = gql("/catalogo/graphql", "{ productos { id } }")
+        try:
+            prods = json.loads(b)["data"]["productos"]
+            if prods:
+                state["producto"] = prods[0]["id"]
+        except Exception:
+            pass
+
+    def read_once():
+        r = random.random()
+        if r < 0.4:
+            s, _ = call("GET", "/health")
+        elif r < 0.6:
+            s, _ = call("GET", "/pedidos/health")
+        elif r < 0.8:
+            s, _ = gql("/catalogo/graphql", "{ productos { id nombre precio } }")
+        else:
+            s, _ = gql("/pedidos/graphql", "{ misPedidos { id estado total } }")
+        if s == 401:
+            login()
+
+    def order_once():
+        if not state["producto"]:
+            find_product()
+            return
+        s, _ = gql("/pedidos/graphql",
+                   "mutation($i: PedidoInput!) { crearPedido(input: $i) { id estado total } }",
+                   {"i": {"items": [{"productoId": state["producto"], "cantidad": 1}]}})
+        if s == 401:
+            login()
+
+    def loop(fn, rps):
+        period = 1.0 / rps
+        nxt = time.time()
+        while True:
+            nxt += period
+            try:
+                fn()
+            except Exception as e:
+                log(evento="error", detalle=str(e))
+            time.sleep(max(0, nxt - time.time()))
+
+    while not login():
+        time.sleep(10)
+    find_product()
+    log(evento="generador_iniciado", target=BASE, rps_lectura=RPS_READ, rps_pedidos=RPS_ORDER)
+    for _ in range(2):
+        threading.Thread(target=loop, args=(read_once, RPS_READ / 2), daemon=True).start()
+    loop(order_once, RPS_ORDER)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  namespace: observability
+  labels: { app: load-generator }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: load-generator }
+  template:
+    metadata:
+      labels: { app: load-generator }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: loadgen
+          image: python:3.12-alpine
+          command: ["python", "-u", "/app/loadgen.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 96Mi }
+          volumeMounts:
+            - { name: code, mountPath: /app }
+      volumes:
+        - name: code
+          configMap: { name: load-generator-code }

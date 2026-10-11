@@ -49,10 +49,12 @@ spec:
           {{- end }}
         - analysis:
             templates:
-              - templateName: {{ include "sa-platform.fullname" $ }}-canary-gate
+              - templateName: {{ include "sa-platform.fullname" $ }}-canary-metrics
             args:
-              - name: canary-service
-                value: {{ include "sa-platform.fullname" $ }}-canary.{{ $.Release.Namespace }}.svc.cluster.local
+              # Hash del ReplicaSet candidato: la consulta de Prometheus mide solo esa version.
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
         {{- end }}
   progressDeadlineSeconds: 900
 {{- end }}

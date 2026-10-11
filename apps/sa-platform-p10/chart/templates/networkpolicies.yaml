@@ -132,31 +132,4 @@ spec:
       ports:
         - protocol: TCP
           port: 5672
----
-# 7) P8: el Job del AnalysisTemplate del canary (ver
-#    charts/api-gateway/templates/analysistemplate.yaml) golpea el Service
-#    canario del api-gateway durante cada paso de la promoción — necesita
-#    permiso explícito porque, igual que cualquier otro pod del namespace,
-#    parte bloqueado por el default-deny (regla 1).
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-gateway-from-canary-analysis
-  labels:
-    {{- include "sa-platform.labels" . | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: api-gateway
-      app.kubernetes.io/instance: {{ .Release.Name }}
-  policyTypes:
-    - Ingress
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              sa.io/role: analysis
-      ports:
-        - protocol: TCP
-          port: 8080
 {{- end }}

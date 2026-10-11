@@ -63,24 +63,30 @@ autoscaling:
 # rollout.yaml y analysistemplate.yaml.
 rollout:
   enabled: true
-  # 4 pasos de promoción (excede el mínimo de 3 que pide el enunciado),
-  # cada uno seguido de un análisis (smoke + integración + carga vía k6).
+  # 4 pasos de promoción (excede el mínimo de 3 que pide el enunciado), cada uno
+  # seguido de un análisis por MÉTRICAS de Prometheus (P10, ver analysistemplate.yaml).
   steps:
     - weight: 20
     - weight: 50
     - weight: 80
     - weight: 100
   analysis:
-    # Umbrales del AnalysisTemplate (ver analysistemplate.yaml), justificados
-    # en P8/docs/informe-incidente.md e informe técnico:
-    #   - errorRateThreshold: 1% es el presupuesto de error de un SLO de
-    #     99% mensual.
-    #   - p95Threshold: 500ms es el punto en que un usuario percibe
-    #     lentitud en un gateway que solo proxea (sin lógica propia).
+    # P10: el análisis consulta Prometheus sobre la versión candidata (sin Job de k6).
+    prometheusAddress: http://kps-prometheus.observability.svc:9090
+    # Umbrales justificados con la línea base medida (p95 ~25 ms, 0 errores 5xx):
+    #   - errorRateThreshold: 1 % = el doble del presupuesto del SLO-1 (0.5 %); con ~2 req/s
+    #     hacia el canary, un 5xx aislado no aborta (failureLimit) pero dos sí.
+    #   - p95ThresholdSeconds: 250 ms = la mitad del límite del SLO-2 (500 ms): detiene
+    #     una regresión antes de que consuma presupuesto de error.
     errorRateThreshold: "0.01"
-    p95ThresholdMs: "500"
-    vus: 5
-    durationSeconds: 20
+    p95ThresholdSeconds: "0.25"
+    # initialDelay: deja que el candidato reciba tráfico y exporte métricas (OTel ~15 s).
+    # interval x count: 4 muestras cada 20 s => ~2 min de evidencia por paso.
+    # failureLimit 1: tolera una muestra ruidosa; la segunda fallida aborta el canary.
+    initialDelay: 45s
+    interval: 20s
+    count: 4
+    failureLimit: 1
 
 env: {}
 

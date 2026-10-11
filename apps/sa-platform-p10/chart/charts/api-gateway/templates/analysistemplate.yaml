@@ -1,94 +1,68 @@
 {{- if .Values.rollout.enabled }}
 # ============================================================================
-# AnalysisTemplate: la puerta de calidad que corre en CADA paso del canary
-# (ver rollout.yaml). Provider "job": Argo Rollouts crea un Job de k6 en cada
-# paso; si el Job termina con código != 0 (cualquier check o umbral falla,
-# ver files/canary-analysis.js), el AnalysisRun queda "Failed", el Rollout
-# queda "Degraded" y aborta automáticamente (peso -> 0, todo el tráfico
-# vuelve al stable).
+# AnalysisTemplate (P10): el canary se decide con METRICAS REALES de Prometheus,
+# ya no con un Job sintetico de k6 (cierra el pendiente deliberado de P8).
+#
+# Que mide: SOLO la version candidata. Las metricas OpenTelemetry del api-gateway
+# llevan la etiqueta k8s_replicaset_name; el ReplicaSet del canary se llama
+# "<rollout>-<pod-template-hash>" y Argo Rollouts entrega ese hash en el arg
+# "canary-hash" (valueFrom.podTemplateHashValue: Latest, ver rollout.yaml). Asi la
+# consulta ve exactamente el trafico que el ingress reparte al canary y no el total.
+# El trafico lo mantiene el generador de carga (observability/load-generator),
+# separado de este analisis (D5).
+#
+# Decision: tasa de error 5xx < 1 % (el doble del presupuesto del SLO-1, 0.5 %) y
+# p95 < 250 ms (linea base medida ~25 ms; la mitad del limite de 500 ms del SLO-2,
+# para detener una regresion antes de que consuma presupuesto). Si una consulta
+# falla "failureLimit" veces el AnalysisRun queda Failed -> Rollout Degraded ->
+# aborto automatico (peso 0, todo el trafico al stable).
 # ============================================================================
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
-  name: {{ include "sa-platform.fullname" . }}-canary-gate
+  name: {{ include "sa-platform.fullname" . }}-canary-metrics
   labels:
     {{- include "sa-platform.labels" . | nindent 4 }}
 spec:
   args:
-    - name: canary-service
+    # Pod-template-hash del ReplicaSet candidato (lo inyecta el Rollout).
+    - name: canary-hash
   metrics:
-    - name: canary-gate-k6
-      # Un solo intento por paso: si falla, Rollouts ya decide abortar sin
-      # reintentar (el propio script ya corre smoke+integracion+carga).
-      count: 1
+    - name: error-rate
+      # Espera a que el candidato reciba trafico y exporte sus primeras muestras
+      # (el SDK de OTel exporta cada ~15 s hacia el Collector y Prometheus).
+      initialDelay: {{ .Values.rollout.analysis.initialDelay | quote }}
+      interval: {{ .Values.rollout.analysis.interval | quote }}
+      count: {{ .Values.rollout.analysis.count }}
+      failureLimit: {{ .Values.rollout.analysis.failureLimit }}
+      # Sin muestras (resultado vacio) NO es exito: cuenta como error de
+      # medicion y, tras consecutiveErrorLimit, el paso falla.
+      consecutiveErrorLimit: 3
+      successCondition: "result[0] < {{ .Values.rollout.analysis.errorRateThreshold }}"
+      failureCondition: "result[0] >= {{ .Values.rollout.analysis.errorRateThreshold }}"
       provider:
-        job:
-          spec:
-            backoffLimit: 0
-            template:
-              metadata:
-                labels:
-                  # Habilita la NetworkPolicy que permite este trafico
-                  # hacia el api-gateway (ver templates/networkpolicies.yaml
-                  # del chart padre).
-                  sa.io/role: analysis
-              spec:
-                restartPolicy: Never
-                automountServiceAccountToken: false
-                securityContext:
-                  runAsNonRoot: true
-                  runAsUser: 12345
-                  fsGroup: 12345
-                  seccompProfile:
-                    type: RuntimeDefault
-                containers:
-                  - name: k6-canary-gate
-                    image: grafana/k6:0.54.0
-                    securityContext:
-                      allowPrivilegeEscalation: false
-                      readOnlyRootFilesystem: true
-                      capabilities:
-                        drop: ["ALL"]
-                    resources:
-                      requests:
-                        cpu: "100m"
-                        memory: "128Mi"
-                      limits:
-                        cpu: "500m"
-                        memory: "512Mi"
-                    command:
-                      - k6
-                      - run
-                      - /scripts/canary-analysis.js
-                    env:
-                      - name: BASE_URL
-                        # El placeholder de argumento (sintaxis propia de Argo
-                        # Rollouts, NO de Helm) lo resuelve el controller de
-                        # Rollouts al crear cada AnalysisRun, sustituyendo el
-                        # arg "canary-service" declarado en rollout.yaml
-                        # (analysis.args). Va entre backticks para que Helm lo
-                        # deje pasar tal cual, sin intentar evaluarlo.
-                        value: "http://{{ `{{args.canary-service}}` }}:{{ .Values.service.port }}"
-                      - name: ERROR_RATE_THRESHOLD
-                        value: {{ .Values.rollout.analysis.errorRateThreshold | quote }}
-                      - name: P95_THRESHOLD_MS
-                        value: {{ .Values.rollout.analysis.p95ThresholdMs | quote }}
-                      - name: VUS
-                        value: {{ .Values.rollout.analysis.vus | quote }}
-                      - name: DURATION_SECONDS
-                        value: {{ .Values.rollout.analysis.durationSeconds | quote }}
-                      - name: K6_TMP_DIR
-                        value: /tmp
-                    volumeMounts:
-                      - name: k6-script
-                        mountPath: /scripts
-                        readOnly: true
-                      - name: tmp
-                        mountPath: /tmp
-                volumes:
-                  - name: k6-script
-                    configMap:
-                      name: {{ include "sa-platform.fullname" . }}-canary-analysis-script
-                  - name: tmp
-                    emptyDir: {}
+        prometheus:
+          address: {{ .Values.rollout.analysis.prometheusAddress }}
+          query: |
+            (
+              sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",k8s_replicaset_name="{{ include "sa-platform.fullname" . }}-{{ `{{args.canary-hash}}` }}",http_response_status_code=~"5.."}[1m]))
+              or vector(0)
+            )
+            /
+            sum(rate(http_server_request_duration_seconds_count{service_name="api-gateway",k8s_replicaset_name="{{ include "sa-platform.fullname" . }}-{{ `{{args.canary-hash}}` }}"}[1m]))
+    - name: latency-p95
+      initialDelay: {{ .Values.rollout.analysis.initialDelay | quote }}
+      interval: {{ .Values.rollout.analysis.interval | quote }}
+      count: {{ .Values.rollout.analysis.count }}
+      failureLimit: {{ .Values.rollout.analysis.failureLimit }}
+      consecutiveErrorLimit: 3
+      successCondition: "result[0] < {{ .Values.rollout.analysis.p95ThresholdSeconds }}"
+      failureCondition: "result[0] >= {{ .Values.rollout.analysis.p95ThresholdSeconds }}"
+      provider:
+        prometheus:
+          address: {{ .Values.rollout.analysis.prometheusAddress }}
+          query: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="api-gateway",k8s_replicaset_name="{{ include "sa-platform.fullname" . }}-{{ `{{args.canary-hash}}` }}"}[1m]))
+            )
 {{- end }}
