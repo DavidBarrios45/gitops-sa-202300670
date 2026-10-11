@@ -2,7 +2,7 @@
 # El AnalysisTemplate solo lee Prometheus; este Deployment mantiene trafico "de usuarios" de fondo
 # (~4 req/s) por el Ingress para que p95 y tasa de error del canary tengan muestras suficientes.
 # Entra por ingress-nginx (igual que un usuario real), asi el peso del canary reparte el trafico.
-# Mezcla: lecturas baratas (/health, catalogo, misPedidos) y un goteo de crearPedido (~0.2 req/s).
+# Mezcla: lecturas baratas (/health, catalogo, misPedidos, /pagos/mi-saldo) y un goteo de crearPedido (~0.2 req/s).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -63,14 +63,18 @@ data:
 
     def read_once():
         r = random.random()
-        if r < 0.4:
+        if r < 0.3:
             s, _ = call("GET", "/health")
-        elif r < 0.6:
+        elif r < 0.45:
             s, _ = call("GET", "/pedidos/health")
-        elif r < 0.8:
+        elif r < 0.65:
             s, _ = gql("/catalogo/graphql", "{ productos { id nombre precio } }")
-        else:
+        elif r < 0.8:
             s, _ = gql("/pedidos/graphql", "{ misPedidos { id estado total } }")
+        else:
+            # Ruta /pagos del gateway (dependencia aguas abajo): sin trafico aqui, un fallo en
+            # la ruta de pagos pasaria inadvertido para el analisis del canary.
+            s, _ = call("GET", "/pagos/mi-saldo", token=state["token"])
         if s == 401:
             login()
 
