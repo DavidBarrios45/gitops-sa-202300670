@@ -5,14 +5,12 @@
 api-gateway:
   image:
     repository: ghcr.io/davidbarrios45/sa-p10-api-gateway
-    tag: p10-v0.1.0
-
+    tag: p10-v0.1.1
 pedidos-service:
   image:
     repository: ghcr.io/davidbarrios45/sa-p10-pedidos-service
-    tag: p10-v0.1.0
-
+    tag: p10-v0.1.1
 pagos-service:
   image:
     repository: ghcr.io/davidbarrios45/sa-p10-pagos-service
-    tag: p10-v0.1.0
+    tag: p10-v0.1.1
