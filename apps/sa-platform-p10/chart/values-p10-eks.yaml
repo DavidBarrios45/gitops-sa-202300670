@@ -1,0 +1,18 @@
+# P10 en EKS: imagenes firmadas de GHCR de los 3 servicios instrumentados. Se aplica DESPUES de values-p10.yaml
+# (que apunta a las imagenes locales de kind), por eso solo se pisa repository y tag.
+# El PR automatico de .github/workflows/p10-ci.yml modifica UNICAMENTE las lineas image.tag (via yq).
+# Politica Kyverno verify-image-signature (policies-p10/) exige firma cosign y fija el digest al admitir el Pod.
+api-gateway:
+  image:
+    repository: ghcr.io/davidbarrios45/sa-p10-api-gateway
+    tag: p10-v0.1.0
+
+pedidos-service:
+  image:
+    repository: ghcr.io/davidbarrios45/sa-p10-pedidos-service
+    tag: p10-v0.1.0
+
+pagos-service:
+  image:
+    repository: ghcr.io/davidbarrios45/sa-p10-pagos-service
+    tag: p10-v0.1.0

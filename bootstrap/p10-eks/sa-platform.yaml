@@ -1,0 +1,41 @@
+# P10 EN EKS: la plataforma con los 3 servicios instrumentados (imagenes firmadas sa-p10-* de GHCR).
+# Copia aislada del chart (apps/sa-platform-p10) para no alterar lo que despliega P9. Variante de
+# bootstrap/p10/sa-platform.yaml (kind): SIN values-kind.yaml y CON values-p10-eks.yaml (ultimo: pisa las
+# imagenes locales de values-p10.yaml). El PR automatico de p10-ci.yml solo cambia image.tag en values-p10-eks.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-platform
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
+    targetRevision: main
+    path: apps/sa-platform-p10/chart
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-eks.yaml
+        - values-p10.yaml
+        - values-p10-eks.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sa-p8
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jqPathExpressions:
+        - '.spec.template.spec.containers[].image'
+        - '.spec.template.spec.initContainers[].image'
+    - group: batch
+      kind: CronJob
+      jqPathExpressions:
+        - '.spec.jobTemplate.spec.template.spec.containers[].image'
+        - '.spec.jobTemplate.spec.template.spec.initContainers[].image'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

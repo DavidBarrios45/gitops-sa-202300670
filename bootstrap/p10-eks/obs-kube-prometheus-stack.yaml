@@ -1,0 +1,33 @@
+# P10 - stack de observabilidad. Vive en bootstrap/p10/ (NO en apps/ ni apps-kind/) para que
+# los root-app de P9 no lo desplieguen. Lo aplica root-app-p10.yaml. Igual en kind y EKS.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: obs-kube-prometheus-stack
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 92.3.0
+      helm:
+        releaseName: kps
+        valueFiles:
+          - $values/apps/observability/kube-prometheus-stack/values.yaml
+    - repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff: { duration: 20s, factor: 2, maxDuration: 3m }

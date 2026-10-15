@@ -1,0 +1,26 @@
+# App-of-apps de P10 para EKS. INDEPENDIENTE de root-app*.yaml (P8/P9): apunta a bootstrap/p10-eks/, ruta que
+# esos root-app no recorren. En el EKS de P10 se aplica ESTE y NO el root-app de P9 (no coexisten).
+# Despliega: sa-platform (imagenes sa-p10-*), sealed-secrets-sa-platform, kyverno-policies-p10 y los obs-*.
+# Se aplica desde Terraform (terraform/eks) o a mano:  kubectl apply -f bootstrap/root-app-p10-eks.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app-p10-eks
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
+    targetRevision: main
+    path: bootstrap/p10-eks
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

@@ -1,0 +1,44 @@
+# Política obligatoria #1 (enunciado 3.2): prohibir la etiqueta 'latest'.
+# Alcance SOLO al namespace de la aplicación (sa-p8) — si no se acota, esta
+# política también evaluaría los pods del propio sistema (ingress-nginx,
+# ArgoCD, VPC CNI/EBS CSI en EKS) y podría bloquear el arranque del clúster
+# (ver P8/PLAN.md hallazgo #5).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Tag
+    policies.kyverno.io/category: Best Practices (P8)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Exige que toda imagen use una etiqueta explícita y distinta de
+      'latest' (o ausente, que Docker resuelve como 'latest'). El
+      versionamiento semántico (tag o release de Git) es la única fuente de
+      verdad sobre qué versión corre en el clúster.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [sa-p8]
+      validate:
+        message: >-
+          Toda imagen debe declarar una etiqueta explícita (no se admite
+          'latest' ni la ausencia de etiqueta, que Docker resuelve como
+          'latest'). Usa un tag semántico derivado de un tag/release de Git.
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ contains(element.image, ':') }}"
+                    operator: Equals
+                    value: false
+                  - key: "{{ split(element.image, ':')[-1] }}"
+                    operator: Equals
+                    value: "latest"

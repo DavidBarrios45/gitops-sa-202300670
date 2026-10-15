@@ -1,0 +1,24 @@
+# Politicas de Kyverno AISLADAS de P10 (policies-p10/kyverno/): las 4 de P8/P9 + verify-image-signature extendida
+# a las imagenes sa-p10-*. No se usa policies/ (P9). test-violacion/ no existe aqui (no se necesita).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno-policies-p10
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
+    targetRevision: main
+    path: policies-p10/kyverno
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

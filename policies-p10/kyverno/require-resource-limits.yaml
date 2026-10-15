@@ -1,0 +1,38 @@
+# Política obligatoria #2 (enunciado 3.2): exigir límites de CPU y memoria.
+# Complementa (no reemplaza) el LimitRange de Terraform: el LimitRange solo
+# aplica un DEFAULT cuando el Pod no declara resources, pero un Pod que
+# declare 'requests' sin 'limits' lo esquiva — esta política lo bloquea en
+# el admission control, sin depender de que Terraform ya haya corrido.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/category: Best Practices (P8)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Todo contenedor debe declarar límites de CPU y memoria. Sin esto, un
+      solo Pod defectuoso puede agotar los recursos del nodo y afectar a
+      los demás servicios de la plataforma.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-cpu-memory-limits
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [sa-p8]
+      validate:
+        message: >-
+          Todo contenedor debe declarar resources.limits.cpu y
+          resources.limits.memory.
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    memory: "?*"
+                    cpu: "?*"
