@@ -1,8 +1,11 @@
 # P10 Fase 5 - Alertas por CONSUMO DEL PRESUPUESTO DE ERROR (burn rate multiventana), no por umbral instantaneo.
 # Metodologia (SRE Workbook, "multiwindow, multi-burn-rate"): la alerta exige que la tasa de consumo sea alta
 # tanto en una ventana larga (confirma que es sostenido) como en una corta (confirma que sigue pasando).
-#   Rapida / pagina :  burn > 14.4 en 1h  Y  5m   -> consume el 2 % del presupuesto de 28 d en 1 h
-#                      (EXCEPCION crearPedido: ventanas 30m Y 5m, ver abajo)
+#   Rapida / pagina :  burn > 14.4 en 30m Y  5m   -> consume el 1 % del presupuesto de 28 d en 30 min
+#                      (ambos SLO usan 30m/5m; la ventana de 1h original se cambio en la Fase 10, ver abajo)
+# Por que la pagina de disponibilidad usa 30m y no 1h: medido en la Fase 8, con 33 % de errores la ventana de 1h tardo
+# 15 min 40 s en paginar; con 30m/5m la misma falla cruza el umbral (7.2 % de errores) en ~6.5 min. Se acepta que una falla
+# mas leve (7.2-15 %) tarde algo mas, a cambio de reaccionar rapido a las caidas reales.
 #   Lenta  / ticket :  burn > 6    en 6h  Y  30m  -> consume el 5 % del presupuesto de 28 d en 6 h
 # Por que crearPedido usa 30m y no 1h: su presupuesto es 5 % (no 0.5 %), asi que burn 14.4 equivale a 72 % de peticiones
 # malas. Con ventana de 1h una falla total tardaria ~43 min en alertar; con 30m tarda ~22 min (consume >= 1 % del presupuesto
@@ -23,14 +26,14 @@ spec:
       rules:
         - alert: DisponibilidadPresupuestoAgotandoseRapido
           expr: |
-            slo:availability:burn_rate1h > 14.4 and slo:availability:burn_rate5m > 14.4
+            slo:availability:burn_rate30m > 14.4 and slo:availability:burn_rate5m > 14.4
             and slo:availability:requests:rate5m > 0.1
           for: 2m
           labels: { severity: critical, accion: pagina, slo: disponibilidad }
           annotations:
             summary: "Los usuarios reciben errores 5xx: el presupuesto de disponibilidad se agota en horas"
-            description: "Burn rate {{ $value | humanize }}x (1h) con {{ with query \"slo:availability:error_ratio_rate5m\" }}{{ . | first | value | humanizePercentage }}{{ end }} de errores en 5 min. A este ritmo el presupuesto de 28 d dura menos de 2 dias."
-            porque_amerita: "Es el ritmo que consume el 2 % del presupuesto mensual por hora: si nadie actua, el SLO se incumple esta semana, y los usuarios ya estan fallando ahora."
+            description: "Burn rate {{ $value | humanize }}x (30m) con {{ with query \"slo:availability:error_ratio_rate5m\" }}{{ . | first | value | humanizePercentage }}{{ end }} de errores en 5 min. A este ritmo el presupuesto de 28 d dura menos de 2 dias."
+            porque_amerita: "Es el ritmo que consume el 1 % del presupuesto mensual cada 30 min: si nadie actua, el SLO se incumple esta semana, y los usuarios ya estan fallando ahora."
             runbook_url: https://github.com/DavidBarrios45/Practicas-SA-B-202300670/blob/main/P10/docs/runbooks/disponibilidad-rapida.md
         - alert: DisponibilidadPresupuestoAgotandoseLento
           expr: |
