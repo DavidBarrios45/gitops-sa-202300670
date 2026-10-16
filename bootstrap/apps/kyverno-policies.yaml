@@ -13,8 +13,6 @@ spec:
     repoURL: https://github.com/DavidBarrios45/gitops-sa-202300670.git
     targetRevision: main
     path: policies/kyverno
-    directory:
-      recurse: false
   destination:
     server: https://kubernetes.default.svc
     namespace: kyverno
